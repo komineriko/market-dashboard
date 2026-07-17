@@ -37,8 +37,8 @@ jobs:
         run: |
           git config user.name "market-dashboard-bot"
           git config user.email "actions@users.noreply.github.com"
-          if ! git diff --quiet -- index.html; then
-            git add index.html
+          if ! git diff --quiet -- market_dashboard.html; then
+            git add market_dashboard.html
             git commit -m "chore: 自動更新 $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           else
