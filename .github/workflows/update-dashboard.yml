@@ -2,8 +2,8 @@ name: Update market dashboard
 
 on:
   schedule:
-    # 平日 05:50 JST = 前日 20:50 UTC（UTCの日曜〜木曜 = JSTの月曜〜金曜）
-    - cron: "50 20 * * 0-4"
+    # 月〜土 05:50 JST = 前日 20:50 UTC（UTCの日曜〜金曜 = JSTの月曜〜土曜）
+    - cron: "50 20 * * 0-5"
   workflow_dispatch: {}
 
 permissions:
