@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-米国株マーケットダッシュボード 自動更新スクリプト
+米国株マーケットダッシュボード 自動更新スクリプト (v2: 無料プラン対応版)
 
-FMP (Financial Modeling Prep) の stable API から最新データを取得し、
+FMPの無料プランはリアルタイムQuote系エンドポイント(quote / batch-quote 等)には
+アクセスできず、402 Payment Required が返る。
+一方で以下は無料プランでも利用可能:
+  - historical-price-eod/light (終値の日次データ)
+  - profile (会社プロフィール。時価総額を含む)
+  - treasury-rates / news/general-latest
+
+そのため、このバージョンでは全ての価格取得を historical-price-eod/light
+(前日終値ベース)に切り替え、当日比・50日移動平均も自前で計算する。
+
 market_dashboard.html 内の
   /* ===AUTO_UPDATE_DATA_START=== */ ... /* ===AUTO_UPDATE_DATA_END=== */
 で囲まれた const DASHBOARD_DATA = {...}; ブロックだけを書き換える。
-タブ切り替えUI・チャート機能などその他のコードには一切触れない。
-
-環境変数 FMP_API_KEY が必要（GitHub Actions の Secrets 経由で渡す想定）。
 """
 import os
 import re
 import sys
 import json
+import time
 from datetime import datetime, timezone, timedelta
 
 import requests
@@ -26,6 +33,7 @@ if not API_KEY:
 
 BASE = "https://financialmodelingprep.com/stable"
 HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_dashboard.html")
+REQUEST_SLEEP = 0.2  # 無料プランのレート制限に配慮
 
 INDEX_SYMBOLS = [
     ("^GSPC", "S&P500"),
@@ -56,18 +64,70 @@ COMMODITY_SYMBOLS = [
 FOREX_SYMBOLS = [("USDJPY", "USD/JPY"), ("EURUSD", "EUR/USD")]
 
 
-def fetch_batch_quote(symbols):
-    url = f"{BASE}/batch-quote"
-    r = requests.get(url, params={"symbols": ",".join(symbols), "apikey": API_KEY}, timeout=20)
+def _get(path, params):
+    params = dict(params)
+    params["apikey"] = API_KEY
+    r = requests.get(f"{BASE}/{path}", params=params, timeout=20)
+    time.sleep(REQUEST_SLEEP)
     r.raise_for_status()
-    data = r.json()
-    return {row["symbol"]: row for row in data}
+    return r.json()
+
+
+def fetch_eod_series(symbol, days=90):
+    """終値の時系列を日付昇順で返す。各要素は {date, price}"""
+    to_date = datetime.now(timezone.utc).date()
+    from_date = to_date - timedelta(days=days)
+    try:
+        rows = _get("historical-price-eod/light", {
+            "symbol": symbol, "from": from_date.isoformat(), "to": to_date.isoformat(),
+        })
+    except requests.exceptions.HTTPError as e:
+        print(f"WARN: {symbol} のEODデータ取得に失敗: {e}", file=sys.stderr)
+        return []
+    if not isinstance(rows, list) or not rows:
+        return []
+    out = []
+    for row in rows:
+        price = row.get("price", row.get("close"))
+        date = row.get("date")
+        if price is None or date is None:
+            continue
+        out.append({"date": date, "price": float(price)})
+    out.sort(key=lambda x: x["date"])
+    return out
+
+
+def latest_and_change(series):
+    """直近終値・前日比%・50日移動平均を返す"""
+    if len(series) < 2:
+        return None, None, None
+    latest = series[-1]["price"]
+    prev = series[-2]["price"]
+    chg_pct = round((latest - prev) / prev * 100, 2) if prev else None
+    window = series[-50:] if len(series) >= 50 else series
+    sma50 = sum(x["price"] for x in window) / len(window)
+    return latest, chg_pct, sma50
+
+
+def fetch_market_cap(symbol):
+    try:
+        rows = _get("profile", {"symbol": symbol})
+    except requests.exceptions.HTTPError as e:
+        print(f"WARN: {symbol} のprofile取得に失敗: {e}", file=sys.stderr)
+        return None
+    if not isinstance(rows, list) or not rows:
+        return None
+    row = rows[0]
+    cap = row.get("marketCap", row.get("mktCap"))
+    return float(cap) if cap is not None else None
 
 
 def fetch_treasury_10y():
-    r = requests.get(f"{BASE}/treasury-rates", params={"apikey": API_KEY}, timeout=20)
-    r.raise_for_status()
-    rows = r.json()
+    try:
+        rows = _get("treasury-rates", {})
+    except requests.exceptions.HTTPError as e:
+        print(f"WARN: treasury-ratesの取得に失敗: {e}", file=sys.stderr)
+        return None, None
     if not rows:
         return None, None
     latest = rows[0]
@@ -75,97 +135,102 @@ def fetch_treasury_10y():
 
 
 def fetch_news(limit=5):
-    r = requests.get(f"{BASE}/news/general-latest", params={"page": 0, "limit": limit, "apikey": API_KEY}, timeout=20)
-    r.raise_for_status()
-    return r.json()
+    try:
+        return _get("news/general-latest", {"page": 0, "limit": limit})
+    except requests.exceptions.HTTPError as e:
+        print(f"WARN: newsの取得に失敗: {e}", file=sys.stderr)
+        return []
 
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
-def pct(row):
-    return round(float(row.get("changePercentage", 0)), 2)
-
-
 def main():
-    indices_q = fetch_batch_quote([s for s, _ in INDEX_SYMBOLS])
-    sectors_q = fetch_batch_quote([s for s, _ in SECTOR_SYMBOLS])
-    heatmap_q = fetch_batch_quote(HEATMAP_SYMBOLS)
-    commodities_q = fetch_batch_quote([s for s, _ in COMMODITY_SYMBOLS])
-    forex_q = fetch_batch_quote([s for s, _ in FOREX_SYMBOLS])
-    year10, year10_date = fetch_treasury_10y()
-    news_raw = fetch_news(5)
-
     # ---- indices ----
     indices = []
+    index_latest = {}
     for sym, name in INDEX_SYMBOLS:
-        row = indices_q.get(sym)
-        if not row:
+        series = fetch_eod_series(sym, days=90)
+        latest, chg_pct, sma50 = latest_and_change(series)
+        if latest is None:
+            print(f"WARN: {sym} のデータが取得できませんでした（スキップ）", file=sys.stderr)
             continue
+        prev = series[-2]["price"]
         indices.append({
             "name": name, "symbol": sym,
-            "price": round(float(row["price"]), 2),
-            "chg": round(float(row["change"]), 2),
-            "pct": pct(row),
+            "price": round(latest, 2),
+            "chg": round(latest - prev, 2),
+            "pct": chg_pct,
         })
-
-    # ---- sentiment ----
-    sp500 = indices_q.get("^GSPC", {})
-    vix = indices_q.get("^VIX", {})
-    breadth_up = sum(1 for s in HEATMAP_SYMBOLS if heatmap_q.get(s) and pct(heatmap_q[s]) > 0)
-    breadth = round(breadth_up / len(HEATMAP_SYMBOLS) * 100)
-
-    momentum = 50
-    if sp500.get("priceAvg50"):
-        momentum = 50 + (float(sp500["price"]) - float(sp500["priceAvg50"])) / float(sp500["priceAvg50"]) * 1000
-        momentum = round(clamp(momentum, 0, 100))
-
-    vix_component = 50
-    if vix.get("priceAvg50"):
-        vix_component = 50 - (float(vix["price"]) - float(vix["priceAvg50"])) / float(vix["priceAvg50"]) * 500
-        vix_component = round(clamp(vix_component, 0, 100))
-
-    score = round((breadth + momentum + vix_component) / 3)
-    label = "警戒" if score < 40 else ("楽観" if score > 60 else "中立")
-
-    # ---- misc: commodities + forex + rate ----
-    misc = []
-    for sym, name in COMMODITY_SYMBOLS:
-        row = commodities_q.get(sym)
-        if not row:
-            continue
-        misc.append({"name": name, "price": f"${float(row['price']):,.2f}", "pct": pct(row)})
-    for sym, name in FOREX_SYMBOLS:
-        row = forex_q.get(sym)
-        if not row:
-            continue
-        prefix = "¥" if sym == "USDJPY" else "$"
-        decimals = 2 if sym == "USDJPY" else 4
-        misc.append({"name": name, "price": f"{prefix}{float(row['price']):,.{decimals}f}", "pct": pct(row)})
-    if year10 is not None:
-        misc.append({"name": "米10年国債利回り", "price": f"{year10:.2f}%", "pct": None, "note": f"{year10_date}時点"})
+        index_latest[sym] = {"price": latest, "sma50": sma50, "pct": chg_pct}
 
     # ---- sectors ----
     sectors = []
     for sym, name in SECTOR_SYMBOLS:
-        row = sectors_q.get(sym)
-        if not row:
+        series = fetch_eod_series(sym, days=20)
+        _, chg_pct, _ = latest_and_change(series)
+        if chg_pct is None:
+            print(f"WARN: {sym}(セクター) のデータが取得できませんでした（スキップ）", file=sys.stderr)
             continue
-        sectors.append({"name": name, "ticker": sym, "pct": pct(row)})
+        sectors.append({"name": name, "ticker": sym, "pct": chg_pct})
     sectors.sort(key=lambda s: s["pct"], reverse=True)
 
-    # ---- heatmap ----
+    # ---- heatmap (価格 + 時価総額) ----
     heatmap = []
+    breadth_up = 0
+    breadth_total = 0
     for sym in HEATMAP_SYMBOLS:
-        row = heatmap_q.get(sym)
-        if not row:
+        series = fetch_eod_series(sym, days=20)
+        _, chg_pct, _ = latest_and_change(series)
+        if chg_pct is None:
+            print(f"WARN: {sym}(ヒートマップ) のデータが取得できませんでした（スキップ）", file=sys.stderr)
             continue
-        cap_b = float(row.get("marketCap") or 0) / 1e9
+        cap = fetch_market_cap(sym)
+        cap_b = (cap / 1e9) if cap else 100.0  # 取得失敗時は中位ダミー値
         tier = 1 if cap_b >= 2000 else (2 if cap_b >= 800 else 3)
-        heatmap.append({"t": sym, "pct": pct(row), "cap": round(cap_b, 1), "tier": tier})
+        heatmap.append({"t": sym, "pct": chg_pct, "cap": round(cap_b, 1), "tier": tier})
+        breadth_total += 1
+        if chg_pct > 0:
+            breadth_up += 1
 
-    # ---- news (short snippet + link, not full article) ----
+    # ---- misc: commodities + forex + rate ----
+    misc = []
+    for sym, name in COMMODITY_SYMBOLS:
+        series = fetch_eod_series(sym, days=20)
+        latest, chg_pct, _ = latest_and_change(series)
+        if latest is None:
+            print(f"WARN: {sym}(コモディティ) のデータが取得できませんでした（スキップ）", file=sys.stderr)
+            continue
+        misc.append({"name": name, "price": f"${latest:,.2f}", "pct": chg_pct})
+    for sym, name in FOREX_SYMBOLS:
+        series = fetch_eod_series(sym, days=20)
+        latest, chg_pct, _ = latest_and_change(series)
+        if latest is None:
+            print(f"WARN: {sym}(為替) のデータが取得できませんでした（スキップ）", file=sys.stderr)
+            continue
+        prefix = "¥" if sym == "USDJPY" else "$"
+        decimals = 2 if sym == "USDJPY" else 4
+        misc.append({"name": name, "price": f"{prefix}{latest:,.{decimals}f}", "pct": chg_pct})
+    year10, year10_date = fetch_treasury_10y()
+    if year10 is not None:
+        misc.append({"name": "米10年国債利回り", "price": f"{year10:.2f}%", "pct": None, "note": f"{year10_date}時点"})
+
+    # ---- sentiment ----
+    breadth = round(breadth_up / breadth_total * 100) if breadth_total else 50
+    sp = index_latest.get("^GSPC")
+    vix = index_latest.get("^VIX")
+    momentum = 50
+    if sp and sp.get("sma50"):
+        momentum = round(clamp(50 + (sp["price"] - sp["sma50"]) / sp["sma50"] * 1000, 0, 100))
+    vix_component = 50
+    if vix and vix.get("sma50"):
+        vix_component = round(clamp(50 - (vix["price"] - vix["sma50"]) / vix["sma50"] * 500, 0, 100))
+    score = round((breadth + momentum + vix_component) / 3)
+    label = "警戒" if score < 40 else ("楽観" if score > 60 else "中立")
+
+    # ---- news ----
+    news_raw = fetch_news(5)
     news = []
     for item in news_raw[:5]:
         text = (item.get("text") or "").strip()
@@ -180,7 +245,7 @@ def main():
 
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst)
-    fetched_at = now_jst.strftime("%Y年%m月%d日 %H:%M JST 時点（FMPデータ・自動更新）")
+    fetched_at = now_jst.strftime("%Y年%m月%d日 %H:%M JST 時点（FMP終値データ・自動更新）")
 
     data = {
         "fetchedAt": fetched_at,
@@ -216,7 +281,8 @@ def main():
     with open(HTML_PATH, "w", encoding="utf-8") as f:
         f.write(new_html)
 
-    print(f"OK: {fetched_at} のデータで更新しました（センチメントスコア={score} [{label}]）")
+    print(f"OK: {fetched_at} で更新（指数{len(indices)}件・セクター{len(sectors)}件・"
+          f"ヒートマップ{len(heatmap)}件・ニュース{len(news)}件, センチメント={score}[{label}]）")
 
 
 if __name__ == "__main__":
