@@ -32,7 +32,7 @@ if not API_KEY:
     sys.exit(1)
 
 BASE = "https://financialmodelingprep.com/stable"
-HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_dashboard.html")
+HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 REQUEST_SLEEP = 0.2  # 無料プランのレート制限に配慮
 
 INDEX_SYMBOLS = [
