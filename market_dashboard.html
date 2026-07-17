@@ -319,76 +319,202 @@
 ========================================================= */
 /* ===AUTO_UPDATE_DATA_START=== */
 const DASHBOARD_DATA = {
-  fetchedAt: "2026年7月17日 時点（FMPデータ）",
-  indices: [
-    {name:"S&P500",       symbol:"^GSPC", price:7533.77,  chg:-38.63,  pct:-0.51},
-    {name:"NASDAQ100",    symbol:"^NDX",  price:29025.77, chg:-476.83, pct:-1.62},
-    {name:"NYダウ",        symbol:"^DJI",  price:52552.97, chg:-105.67, pct:-0.20},
-    {name:"ラッセル2000",   symbol:"^RUT",  price:2974.57,  chg:-1.69,   pct:-0.06},
-    {name:"VIX",          symbol:"^VIX",  price:18.39,    chg:1.66,    pct:9.92}
+  "fetchedAt": "2026年07月17日 23:06 JST 時点（FMP終値データ・自動更新）",
+  "indices": [
+    {
+      "name": "S&P500",
+      "symbol": "^GSPC",
+      "price": 7476.09,
+      "chg": -57.68,
+      "pct": -0.77
+    },
+    {
+      "name": "NYダウ",
+      "symbol": "^DJI",
+      "price": 52500.87,
+      "chg": -52.1,
+      "pct": -0.1
+    },
+    {
+      "name": "ラッセル2000",
+      "symbol": "^RUT",
+      "price": 2966.02,
+      "chg": -8.55,
+      "pct": -0.29
+    },
+    {
+      "name": "VIX",
+      "symbol": "^VIX",
+      "price": 19.33,
+      "chg": 2.6,
+      "pct": 15.54
+    }
   ],
-  misc: [
-    {name:"金 (Gold)",      price:"$3,984.80", pct:-0.18},
-    {name:"原油 (WTI)",     price:"$80.86",     pct:2.42},
-    {name:"銀 (Silver)",    price:"$55.48",     pct:-1.26},
-    {name:"天然ガス",        price:"$2.88",      pct:0.77},
-    {name:"USD/JPY",       price:"¥162.41",    pct:0.04},
-    {name:"EUR/USD",       price:"$1.1428",    pct:-0.14},
-    {name:"米10年国債利回り", price:"4.57%",      pct:null, note:"7/16時点"},
-    {name:"—",             price:"",            pct:null, hidden:true}
+  "misc": [
+    {
+      "name": "金 (Gold)",
+      "price": "$3,993.30",
+      "pct": 0.03
+    },
+    {
+      "name": "銀 (Silver)",
+      "price": "$55.55",
+      "pct": -1.13
+    },
+    {
+      "name": "USD/JPY",
+      "price": "¥162.37",
+      "pct": -0.01
+    },
+    {
+      "name": "EUR/USD",
+      "price": "$1.1439",
+      "pct": -0.04
+    },
+    {
+      "name": "米10年国債利回り",
+      "price": "4.57%",
+      "pct": null,
+      "note": "2026-07-16時点"
+    }
   ],
-  sentiment:{score:50, breadth:72, momentum:60, vix:18, label:"中立"},
-  sectors: [
-    {name:"生活必需品",   ticker:"XLP",  pct:2.80},
-    {name:"ヘルスケア",   ticker:"XLV",  pct:2.22},
-    {name:"不動産",      ticker:"XLRE", pct:2.02},
-    {name:"エネルギー",   ticker:"XLE",  pct:0.92},
-    {name:"素材",        ticker:"XLB",  pct:0.77},
-    {name:"公共事業",     ticker:"XLU",  pct:0.56},
-    {name:"金融",        ticker:"XLF",  pct:0.34},
-    {name:"一般消費財",   ticker:"XLY",  pct:0.29},
-    {name:"資本財",      ticker:"XLI",  pct:0.05},
-    {name:"通信サービス", ticker:"XLC",  pct:-0.64},
-    {name:"情報技術",     ticker:"XLK",  pct:-2.24}
+  "sentiment": {
+    "score": 31,
+    "breadth": 43,
+    "momentum": 51,
+    "vix": 0,
+    "label": "警戒"
+  },
+  "sectors": [],
+  "heatmap": [
+    {
+      "t": "AAPL",
+      "pct": -0.86,
+      "cap": 4845.1,
+      "tier": 1
+    },
+    {
+      "t": "MSFT",
+      "pct": -1.97,
+      "cap": 2916.7,
+      "tier": 1
+    },
+    {
+      "t": "GOOGL",
+      "pct": -2.14,
+      "cap": 4200.5,
+      "tier": 1
+    },
+    {
+      "t": "AMZN",
+      "pct": -0.71,
+      "cap": 2674.2,
+      "tier": 1
+    },
+    {
+      "t": "NVDA",
+      "pct": -2.78,
+      "cap": 4936.5,
+      "tier": 1
+    },
+    {
+      "t": "META",
+      "pct": -3.43,
+      "cap": 1621.5,
+      "tier": 2
+    },
+    {
+      "t": "TSLA",
+      "pct": -2.59,
+      "cap": 1437.5,
+      "tier": 2
+    },
+    {
+      "t": "JPM",
+      "pct": -0.24,
+      "cap": 917.4,
+      "tier": 2
+    },
+    {
+      "t": "V",
+      "pct": -1.15,
+      "cap": 690.1,
+      "tier": 3
+    },
+    {
+      "t": "UNH",
+      "pct": 1.56,
+      "cap": 390.2,
+      "tier": 3
+    },
+    {
+      "t": "XOM",
+      "pct": 1.89,
+      "cap": 616.0,
+      "tier": 3
+    },
+    {
+      "t": "JNJ",
+      "pct": 2.06,
+      "cap": 612.5,
+      "tier": 3
+    },
+    {
+      "t": "COST",
+      "pct": 1.08,
+      "cap": 422.1,
+      "tier": 3
+    },
+    {
+      "t": "ABBV",
+      "pct": 2.0,
+      "cap": 455.3,
+      "tier": 3
+    },
+    {
+      "t": "CVX",
+      "pct": 1.98,
+      "cap": 373.1,
+      "tier": 3
+    },
+    {
+      "t": "KO",
+      "pct": -1.12,
+      "cap": 359.3,
+      "tier": 3
+    },
+    {
+      "t": "PEP",
+      "pct": 1.26,
+      "cap": 191.5,
+      "tier": 3
+    },
+    {
+      "t": "WMT",
+      "pct": 1.82,
+      "cap": 927.7,
+      "tier": 2
+    },
+    {
+      "t": "BAC",
+      "pct": 0.23,
+      "cap": 437.5,
+      "tier": 3
+    },
+    {
+      "t": "NFLX",
+      "pct": -9.83,
+      "cap": 284.8,
+      "tier": 3
+    },
+    {
+      "t": "ADBE",
+      "pct": -0.03,
+      "cap": 93.1,
+      "tier": 3
+    }
   ],
-  heatmap: [
-    {t:"AAPL", pct:1.76, cap:4894.7, tier:1},
-    {t:"MSFT", pct:1.38, cap:2979.5, tier:1},
-    {t:"GOOGL",pct:-4.44,cap:4287.1, tier:1},
-    {t:"AMZN", pct:-1.99,cap:2688.1, tier:1},
-    {t:"NVDA", pct:-2.40,cap:5023.4, tier:1},
-    {t:"META", pct:-2.46,cap:1686.9, tier:2},
-    {t:"TSLA", pct:-0.86,cap:1468.7, tier:2},
-    {t:"AVGO", pct:-5.03,cap:1781.5, tier:2},
-    {t:"BRK-B",pct:0.98, cap:1063.6, tier:2},
-    {t:"LLY",  pct:1.18, cap:1102.1, tier:2},
-    {t:"JPM",  pct:-1.08,cap:919.5,  tier:2},
-    {t:"WMT",  pct:2.15, cap:914.8,  tier:2},
-    {t:"V",    pct:2.82, cap:699.9,  tier:3},
-    {t:"UNH",  pct:1.16, cap:384.5,  tier:3},
-    {t:"XOM",  pct:1.00, cap:605.0,  tier:3},
-    {t:"MA",   pct:3.05, cap:487.3,  tier:3},
-    {t:"JNJ",  pct:1.19, cap:601.7,  tier:3},
-    {t:"PG",   pct:2.32, cap:352.7,  tier:3},
-    {t:"HD",   pct:1.93, cap:347.0,  tier:3},
-    {t:"MRK",  pct:3.29, cap:315.3,  tier:3},
-    {t:"COST", pct:3.17, cap:419.3,  tier:3},
-    {t:"ABBV", pct:4.24, cap:449.6,  tier:3},
-    {t:"CVX",  pct:1.26, cap:366.2,  tier:3},
-    {t:"KO",   pct:3.00, cap:365.4,  tier:3},
-    {t:"PEP",  pct:2.98, cap:190.5,  tier:3},
-    {t:"BAC",  pct:-0.16,cap:436.4,  tier:3},
-    {t:"CRM",  pct:3.40, cap:141.4,  tier:3},
-    {t:"NFLX", pct:0.91, cap:313.1,  tier:3},
-    {t:"ADBE", pct:4.79, cap:93.5,   tier:3}
-  ],
-  news: [
-    {pub:"WSJ", title:"米天然ガス先物、底堅い動き", desc:"穏やかな気象見通しとLNGフィード需要の軟化を受けて、直近の下落後も価格は安定的に推移。", url:"https://www.wsj.com/articles/u-s-natural-gas-futures-hold-their-ground-57cee10b"},
-    {pub:"Bloomberg", title:"原油「供給過剰の幻想」は崩れたとの指摘", desc:"著名ストラテジストが、原油市場は需給ひっ迫局面に移行しつつあり、価格そのものより製品価格が実勢を示すと分析。", url:"https://www.youtube.com/watch?v=zapVbR7KzTY"},
-    {pub:"Seeking Alpha", title:"指数の見かけの安定の裏で進む調整", desc:"主要指数は表面上安定して見えるが、半導体セクターを中心に水面下でセクター間の資金ローテーションが進行との分析。", url:"https://seekingalpha.com/article/4922945-the-market-is-already-crashing-the-indexes-are-hiding-it"},
-    {pub:"Reuters", title:"欧州リサイクル業界、投資判断はなお慎重", desc:"ノルウェーTomra社CEOによれば、EUの規制期限が迫る中でも欧州のプラスチックリサイクル業界は設備投資に慎重な姿勢を崩していない。", url:"https://www.reuters.com/business/environment/tomra-says-recyclers-delay-investment-despite-looming-eu-deadlines-2026-07-17/"},
-    {pub:"CNBC", title:"T・ロウ・プライス、市場の主要トレンドを語る", desc:"同社CIOが、AI導入の進展状況やインフレ懸念など、目下の市場を左右する複数のテーマについて見解を共有。", url:"https://www.youtube.com/watch?v=L_X3vY7fiwQ"}
-  ]
+  "news": []
 };
 /* ===AUTO_UPDATE_DATA_END=== */
 
