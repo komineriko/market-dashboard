@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>米国株マーケットダッシュボード</title>
+<style>
+  :root{
+    --bg: #0c0f16;
+    --bg-elevated: #12161f;
+    --card: #161b26;
+    --card-border: #232937;
+    --text: #e7eaf0;
+    --text-dim: #8993a4;
+    --text-faint: #5b6472;
+    --up: #2fd480;
+    --up-bg: rgba(47,212,128,0.14);
+    --down: #ff5d6c;
+    --down-bg: rgba(255,93,108,0.14);
+    --accent: #4d8dff;
+    --accent-soft: rgba(77,141,255,0.15);
+    --warn: #f5b942;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    height:100%;
+  }
+  ::selection{background:var(--accent-soft);}
+  .app{
+    max-width:1100px;
+    margin:0 auto;
+    padding:20px 16px 96px;
+  }
+  header.top{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-bottom:18px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--card-border);
+  }
+  header.top h1{
+    font-size:18px;
+    font-weight:700;
+    margin:0;
+    letter-spacing:0.02em;
+  }
+  header.top .meta{
+    font-size:12px;
+    color:var(--text-faint);
+  }
+  .tabpanel{display:none;animation:fade .25s ease;}
+  .tabpanel.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+
+  .section-title{
+    font-size:13px;
+    color:var(--text-dim);
+    font-weight:600;
+    margin:22px 0 10px;
+    letter-spacing:.04em;
+  }
+  .section-title:first-child{margin-top:0;}
+
+  /* 指数カード */
+  .index-grid{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:10px;
+  }
+  .index-card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:12px;
+    padding:14px 12px;
+  }
+  .index-card .name{font-size:12px;color:var(--text-dim);margin-bottom:6px;}
+  .index-card .price{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .index-card .chg{font-size:12.5px;margin-top:4px;font-variant-numeric:tabular-nums;font-weight:600;}
+  .up{color:var(--up);}
+  .down{color:var(--down);}
+  .flat{color:var(--text-dim);}
+
+  /* センチメントゲージ */
+  .sentiment-card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:12px;
+    padding:16px 18px;
+  }
+  .sentiment-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+  .sentiment-score{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .sentiment-label{font-size:13px;padding:3px 10px;border-radius:999px;font-weight:700;}
+  .gauge-bar{
+    position:relative;
+    height:8px;border-radius:99px;margin:14px 0 6px;
+    background:linear-gradient(90deg,#ff5d6c 0%, #f5b942 45%, #2fd480 100%);
+  }
+  .gauge-marker{
+    position:absolute;top:-5px;width:2px;height:18px;background:#fff;border-radius:2px;
+    box-shadow:0 0 0 3px rgba(255,255,255,0.15);
+  }
+  .gauge-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-faint);}
+  .sentiment-sub{display:flex;gap:18px;margin-top:12px;flex-wrap:wrap;}
+  .sentiment-sub div{font-size:11.5px;color:var(--text-dim);}
+  .sentiment-sub b{color:var(--text);font-variant-numeric:tabular-nums;}
+  .sentiment-note{font-size:10.5px;color:var(--text-faint);margin-top:12px;line-height:1.6;}
+
+  /* コモディティ・為替・金利 */
+  .misc-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+  }
+  .misc-card{
+    background:var(--card);border:1px solid var(--card-border);border-radius:10px;
+    padding:11px 12px;
+  }
+  .misc-card .name{font-size:11px;color:var(--text-dim);margin-bottom:5px;}
+  .misc-card .price{font-size:14.5px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .misc-card .chg{font-size:11px;margin-top:3px;font-variant-numeric:tabular-nums;font-weight:600;}
+
+  /* ヒートマップ */
+  .heatmap-grid{
+    display:grid;
+    grid-template-columns:repeat(10,1fr);
+    grid-auto-rows:56px;
+    gap:5px;
+    grid-auto-flow:dense;
+  }
+  .tile{
+    border-radius:8px;
+    padding:6px 8px;
+    display:flex;flex-direction:column;justify-content:space-between;
+    overflow:hidden;
+    cursor:default;
+    transition:transform .15s ease;
+  }
+  .tile:hover{transform:scale(1.03);z-index:2;}
+  .tile .tk{font-weight:800;font-size:13px;}
+  .tile .pc{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .tile.t1{grid-column:span 4;grid-row:span 2;}
+  .tile.t2{grid-column:span 4;grid-row:span 1;}
+  .tile.t3{grid-column:span 2;grid-row:span 1;}
+  .tile.t1 .tk{font-size:20px;}
+  .tile.t1 .pc{font-size:15px;}
+  .tile.t2 .tk{font-size:15px;}
+
+  /* セクター */
+  .sector-list{display:flex;flex-direction:column;gap:8px;}
+  .sector-row{
+    display:flex;align-items:center;gap:12px;
+    background:var(--card);border:1px solid var(--card-border);
+    border-radius:10px;padding:10px 14px;
+  }
+  .sector-row .sname{flex:0 0 150px;font-size:13px;}
+  .sector-row .sticker{flex:0 0 46px;font-size:11px;color:var(--text-faint);}
+  .sector-bar-track{flex:1;height:8px;background:#1d2330;border-radius:99px;position:relative;overflow:hidden;}
+  .sector-bar-fill{position:absolute;top:0;bottom:0;border-radius:99px;}
+  .sector-row .spct{flex:0 0 62px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;font-size:13px;}
+
+  /* ニュース */
+  .news-list{display:flex;flex-direction:column;gap:10px;}
+  .news-item{
+    background:var(--card);border:1px solid var(--card-border);border-radius:10px;
+    padding:13px 15px;text-decoration:none;color:inherit;display:block;
+  }
+  .news-item:hover{border-color:var(--accent);}
+  .news-item .pub{font-size:11px;color:var(--accent);font-weight:700;margin-bottom:5px;}
+  .news-item .ttl{font-size:14px;font-weight:700;line-height:1.5;margin-bottom:5px;}
+  .news-item .desc{font-size:12.5px;color:var(--text-dim);line-height:1.6;}
+
+  /* チャート */
+  .chart-add{display:flex;gap:8px;margin-bottom:16px;}
+  .chart-add input{
+    flex:1;background:var(--card);border:1px solid var(--card-border);color:var(--text);
+    border-radius:8px;padding:11px 14px;font-size:14px;outline:none;
+  }
+  .chart-add input:focus{border-color:var(--accent);}
+  .chart-add button{
+    background:var(--accent);color:#fff;border:none;border-radius:8px;
+    padding:0 20px;font-size:14px;font-weight:700;cursor:pointer;
+  }
+  .chart-add button:hover{opacity:.9;}
+  .chart-list{display:flex;flex-direction:column;gap:14px;}
+  .chart-box{
+    background:var(--card);border:1px solid var(--card-border);border-radius:10px;overflow:hidden;
+  }
+  .chart-box .chead{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 14px;border-bottom:1px solid var(--card-border);
+  }
+  .chart-box .chead .tk{font-weight:800;font-size:14px;}
+  .chart-box .chead button{
+    background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;line-height:1;
+  }
+  .chart-box .chead button:hover{color:var(--down);}
+  .chart-box iframe{width:100%;height:400px;border:none;display:block;}
+  .empty-state{
+    text-align:center;color:var(--text-faint);font-size:13px;padding:60px 20px;
+    border:1px dashed var(--card-border);border-radius:10px;
+  }
+
+  /* タブバー */
+  nav.tabbar{
+    position:fixed;left:0;right:0;bottom:0;
+    background:rgba(18,22,31,0.92);
+    backdrop-filter:blur(10px);
+    border-top:1px solid var(--card-border);
+    display:flex;
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+    z-index:50;
+  }
+  nav.tabbar button{
+    flex:1;background:none;border:none;color:var(--text-faint);
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:7px 2px;border-radius:10px;cursor:pointer;font-family:inherit;
+  }
+  nav.tabbar button .ic{font-size:18px;line-height:1;}
+  nav.tabbar button .lb{font-size:10.5px;font-weight:600;}
+  nav.tabbar button.active{color:var(--accent);background:var(--accent-soft);}
+
+  @media (max-width:700px){
+    .index-grid{grid-template-columns:repeat(2,1fr);}
+    .misc-grid{grid-template-columns:repeat(2,1fr);}
+    .heatmap-grid{grid-template-columns:repeat(6,1fr);grid-auto-rows:46px;}
+    .tile.t1{grid-column:span 4;grid-row:span 2;}
+    .tile.t2{grid-column:span 3;grid-row:span 1;}
+    .tile.t3{grid-column:span 2;grid-row:span 1;}
+    .tile .tk{font-size:11px;}
+    .tile.t1 .tk{font-size:15px;}
+    .sector-row .sname{flex-basis:100px;font-size:12px;}
+    .sector-row .sticker{display:none;}
+    .chart-box iframe{height:280px;}
+    .app{padding:16px 10px 96px;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>🇺🇸 米国株マーケットダッシュボード</h1>
+    <div class="meta" id="fetchedAtLabel">取得日時: --</div>
+  </header>
+
+  <!-- 1. サマリー -->
+  <section class="tabpanel active" id="tab-summary">
+    <div class="section-title">主要指数</div>
+    <div class="index-grid" id="indexGrid"></div>
+
+    <div class="section-title">マーケットセンチメント（独自算出）</div>
+    <div class="sentiment-card">
+      <div class="sentiment-top">
+        <div>
+          <div class="sentiment-score" id="sentScore">--</div>
+        </div>
+        <div class="sentiment-label" id="sentLabel">--</div>
+      </div>
+      <div class="gauge-bar"><div class="gauge-marker" id="gaugeMarker"></div></div>
+      <div class="gauge-labels"><span>警戒 0</span><span>中立 50</span><span>楽観 100</span></div>
+      <div class="sentiment-sub">
+        <div>値上がり比率(29銘柄) <b id="sBreadth">--</b></div>
+        <div>モメンタム(S&P対50日線) <b id="sMomentum">--</b></div>
+        <div>VIX成分 <b id="sVix">--</b></div>
+      </div>
+      <div class="sentiment-note">※ この指数は breadth・momentum・VIXから独自算出した簡易指標であり、CNN公式のFear&amp;Greed Indexとは別物です。</div>
+    </div>
+
+    <div class="section-title">コモディティ・為替・金利</div>
+    <div class="misc-grid" id="miscGrid"></div>
+  </section>
+
+  <!-- 2. ヒートマップ -->
+  <section class="tabpanel" id="tab-heatmap">
+    <div class="section-title">メガキャップ29銘柄（サイズ=時価総額 / 色=騰落率）</div>
+    <div class="heatmap-grid" id="heatmapGrid"></div>
+  </section>
+
+  <!-- 3. セクター -->
+  <section class="tabpanel" id="tab-sector">
+    <div class="section-title">セクターETF 前日比パフォーマンス</div>
+    <div class="sector-list" id="sectorList"></div>
+  </section>
+
+  <!-- 4. ニュース -->
+  <section class="tabpanel" id="tab-news">
+    <div class="section-title">マーケットニュース</div>
+    <div class="news-list" id="newsList"></div>
+  </section>
+
+  <!-- 5. チャート -->
+  <section class="tabpanel" id="tab-chart">
+    <div class="section-title">銘柄チャート（追加・削除は自動更新の対象外）</div>
+    <div class="chart-add">
+      <input type="text" id="tickerInput" placeholder="ティッカーを入力（例: AAPL）" autocomplete="off">
+      <button id="addTickerBtn">＋追加</button>
+    </div>
+    <div class="chart-list" id="chartList"></div>
+  </section>
+</div>
+
+<nav class="tabbar" id="tabbar">
+  <button data-tab="summary" class="active"><span class="ic">📊</span><span class="lb">サマリー</span></button>
+  <button data-tab="heatmap"><span class="ic">🗺️</span><span class="lb">ヒートマップ</span></button>
+  <button data-tab="sector"><span class="ic">🏭</span><span class="lb">セクター</span></button>
+  <button data-tab="news"><span class="ic">📰</span><span class="lb">ニュース</span></button>
+  <button data-tab="chart"><span class="ic">📈</span><span class="lb">チャート</span></button>
+</nav>
+
+<script>
+/* =========================================================
+   データ（取得日時時点のスナップショット。自動更新タスクでは
+   このオブジェクトのみを書き換える想定）
+========================================================= */
+/* ===AUTO_UPDATE_DATA_START=== */
+const DASHBOARD_DATA = {
+  fetchedAt: "2026年7月17日 時点（FMPデータ）",
+  indices: [
+    {name:"S&P500",       symbol:"^GSPC", price:7533.77,  chg:-38.63,  pct:-0.51},
+    {name:"NASDAQ100",    symbol:"^NDX",  price:29025.77, chg:-476.83, pct:-1.62},
+    {name:"NYダウ",        symbol:"^DJI",  price:52552.97, chg:-105.67, pct:-0.20},
+    {name:"ラッセル2000",   symbol:"^RUT",  price:2974.57,  chg:-1.69,   pct:-0.06},
+    {name:"VIX",          symbol:"^VIX",  price:18.39,    chg:1.66,    pct:9.92}
+  ],
+  misc: [
+    {name:"金 (Gold)",      price:"$3,984.80", pct:-0.18},
+    {name:"原油 (WTI)",     price:"$80.86",     pct:2.42},
+    {name:"銀 (Silver)",    price:"$55.48",     pct:-1.26},
+    {name:"天然ガス",        price:"$2.88",      pct:0.77},
+    {name:"USD/JPY",       price:"¥162.41",    pct:0.04},
+    {name:"EUR/USD",       price:"$1.1428",    pct:-0.14},
+    {name:"米10年国債利回り", price:"4.57%",      pct:null, note:"7/16時点"},
+    {name:"—",             price:"",            pct:null, hidden:true}
+  ],
+  sentiment:{score:50, breadth:72, momentum:60, vix:18, label:"中立"},
+  sectors: [
+    {name:"生活必需品",   ticker:"XLP",  pct:2.80},
+    {name:"ヘルスケア",   ticker:"XLV",  pct:2.22},
+    {name:"不動産",      ticker:"XLRE", pct:2.02},
+    {name:"エネルギー",   ticker:"XLE",  pct:0.92},
+    {name:"素材",        ticker:"XLB",  pct:0.77},
+    {name:"公共事業",     ticker:"XLU",  pct:0.56},
+    {name:"金融",        ticker:"XLF",  pct:0.34},
+    {name:"一般消費財",   ticker:"XLY",  pct:0.29},
+    {name:"資本財",      ticker:"XLI",  pct:0.05},
+    {name:"通信サービス", ticker:"XLC",  pct:-0.64},
+    {name:"情報技術",     ticker:"XLK",  pct:-2.24}
+  ],
+  heatmap: [
+    {t:"AAPL", pct:1.76, cap:4894.7, tier:1},
+    {t:"MSFT", pct:1.38, cap:2979.5, tier:1},
+    {t:"GOOGL",pct:-4.44,cap:4287.1, tier:1},
+    {t:"AMZN", pct:-1.99,cap:2688.1, tier:1},
+    {t:"NVDA", pct:-2.40,cap:5023.4, tier:1},
+    {t:"META", pct:-2.46,cap:1686.9, tier:2},
+    {t:"TSLA", pct:-0.86,cap:1468.7, tier:2},
+    {t:"AVGO", pct:-5.03,cap:1781.5, tier:2},
+    {t:"BRK-B",pct:0.98, cap:1063.6, tier:2},
+    {t:"LLY",  pct:1.18, cap:1102.1, tier:2},
+    {t:"JPM",  pct:-1.08,cap:919.5,  tier:2},
+    {t:"WMT",  pct:2.15, cap:914.8,  tier:2},
+    {t:"V",    pct:2.82, cap:699.9,  tier:3},
+    {t:"UNH",  pct:1.16, cap:384.5,  tier:3},
+    {t:"XOM",  pct:1.00, cap:605.0,  tier:3},
+    {t:"MA",   pct:3.05, cap:487.3,  tier:3},
+    {t:"JNJ",  pct:1.19, cap:601.7,  tier:3},
+    {t:"PG",   pct:2.32, cap:352.7,  tier:3},
+    {t:"HD",   pct:1.93, cap:347.0,  tier:3},
+    {t:"MRK",  pct:3.29, cap:315.3,  tier:3},
+    {t:"COST", pct:3.17, cap:419.3,  tier:3},
+    {t:"ABBV", pct:4.24, cap:449.6,  tier:3},
+    {t:"CVX",  pct:1.26, cap:366.2,  tier:3},
+    {t:"KO",   pct:3.00, cap:365.4,  tier:3},
+    {t:"PEP",  pct:2.98, cap:190.5,  tier:3},
+    {t:"BAC",  pct:-0.16,cap:436.4,  tier:3},
+    {t:"CRM",  pct:3.40, cap:141.4,  tier:3},
+    {t:"NFLX", pct:0.91, cap:313.1,  tier:3},
+    {t:"ADBE", pct:4.79, cap:93.5,   tier:3}
+  ],
+  news: [
+    {pub:"WSJ", title:"米天然ガス先物、底堅い動き", desc:"穏やかな気象見通しとLNGフィード需要の軟化を受けて、直近の下落後も価格は安定的に推移。", url:"https://www.wsj.com/articles/u-s-natural-gas-futures-hold-their-ground-57cee10b"},
+    {pub:"Bloomberg", title:"原油「供給過剰の幻想」は崩れたとの指摘", desc:"著名ストラテジストが、原油市場は需給ひっ迫局面に移行しつつあり、価格そのものより製品価格が実勢を示すと分析。", url:"https://www.youtube.com/watch?v=zapVbR7KzTY"},
+    {pub:"Seeking Alpha", title:"指数の見かけの安定の裏で進む調整", desc:"主要指数は表面上安定して見えるが、半導体セクターを中心に水面下でセクター間の資金ローテーションが進行との分析。", url:"https://seekingalpha.com/article/4922945-the-market-is-already-crashing-the-indexes-are-hiding-it"},
+    {pub:"Reuters", title:"欧州リサイクル業界、投資判断はなお慎重", desc:"ノルウェーTomra社CEOによれば、EUの規制期限が迫る中でも欧州のプラスチックリサイクル業界は設備投資に慎重な姿勢を崩していない。", url:"https://www.reuters.com/business/environment/tomra-says-recyclers-delay-investment-despite-looming-eu-deadlines-2026-07-17/"},
+    {pub:"CNBC", title:"T・ロウ・プライス、市場の主要トレンドを語る", desc:"同社CIOが、AI導入の進展状況やインフレ懸念など、目下の市場を左右する複数のテーマについて見解を共有。", url:"https://www.youtube.com/watch?v=L_X3vY7fiwQ"}
+  ]
+};
+/* ===AUTO_UPDATE_DATA_END=== */
+
+/* =========================================================
+   レンダリング
+========================================================= */
+function fmtPct(p){
+  if(p===null||p===undefined) return "";
+  const s = p>0?"+":"";
+  return `${s}${p.toFixed(2)}%`;
+}
+function pctClass(p){
+  if(p===null||p===undefined) return "flat";
+  return p>0?"up":(p<0?"down":"flat");
+}
+function heatColor(pct){
+  const clamped = Math.max(-5, Math.min(5, pct));
+  const ratio = Math.abs(clamped)/5;
+  if(pct>=0){
+    const l = 14 + ratio*10;
+    return `hsl(154, 62%, ${l}%)`;
+  } else {
+    const l = 14 + ratio*10;
+    return `hsl(353, 62%, ${l}%)`;
+  }
+}
+
+function renderIndices(){
+  const el = document.getElementById('indexGrid');
+  el.innerHTML = DASHBOARD_DATA.indices.map(i=>`
+    <div class="index-card">
+      <div class="name">${i.name}</div>
+      <div class="price">${i.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+      <div class="chg ${pctClass(i.pct)}">${i.chg>0?'+':''}${i.chg.toFixed(2)} (${fmtPct(i.pct)})</div>
+    </div>
+  `).join('');
+}
+
+function renderSentiment(){
+  const s = DASHBOARD_DATA.sentiment;
+  document.getElementById('sentScore').textContent = s.score;
+  const labelEl = document.getElementById('sentLabel');
+  labelEl.textContent = s.label;
+  labelEl.style.background = s.score<40? 'rgba(255,93,108,0.18)' : (s.score>60? 'rgba(47,212,128,0.18)':'rgba(245,185,66,0.18)');
+  labelEl.style.color = s.score<40? 'var(--down)' : (s.score>60? 'var(--up)':'var(--warn)');
+  document.getElementById('gaugeMarker').style.left = `calc(${s.score}% - 1px)`;
+  document.getElementById('sBreadth').textContent = s.breadth + '%';
+  document.getElementById('sMomentum').textContent = s.momentum;
+  document.getElementById('sVix').textContent = s.vix;
+}
+
+function renderMisc(){
+  const el = document.getElementById('miscGrid');
+  el.innerHTML = DASHBOARD_DATA.misc.filter(m=>!m.hidden).map(m=>`
+    <div class="misc-card">
+      <div class="name">${m.name}</div>
+      <div class="price">${m.price}</div>
+      ${m.pct!==null?`<div class="chg ${pctClass(m.pct)}">${fmtPct(m.pct)}</div>`:`<div class="chg flat">${m.note||''}</div>`}
+    </div>
+  `).join('');
+}
+
+function renderHeatmap(){
+  const el = document.getElementById('heatmapGrid');
+  el.innerHTML = DASHBOARD_DATA.heatmap.map(h=>`
+    <div class="tile t${h.tier}" style="background:${heatColor(h.pct)}">
+      <div class="tk">${h.t}</div>
+      <div class="pc">${fmtPct(h.pct)}</div>
+    </div>
+  `).join('');
+}
+
+function renderSectors(){
+  const el = document.getElementById('sectorList');
+  const maxAbs = Math.max(...DASHBOARD_DATA.sectors.map(s=>Math.abs(s.pct)), 1);
+  el.innerHTML = DASHBOARD_DATA.sectors.map(s=>{
+    const w = Math.abs(s.pct)/maxAbs*50;
+    const isUp = s.pct>=0;
+    const left = isUp? '50%' : `calc(50% - ${w}%)`;
+    return `
+    <div class="sector-row">
+      <div class="sname">${s.name}</div>
+      <div class="sticker">${s.ticker}</div>
+      <div class="sector-bar-track">
+        <div class="sector-bar-fill" style="left:${left};width:${w}%;background:${isUp?'var(--up)':'var(--down)'}"></div>
+      </div>
+      <div class="spct ${pctClass(s.pct)}">${fmtPct(s.pct)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderNews(){
+  const el = document.getElementById('newsList');
+  el.innerHTML = DASHBOARD_DATA.news.map(n=>`
+    <a class="news-item" href="${n.url}" target="_blank" rel="noopener">
+      <div class="pub">${n.pub}</div>
+      <div class="ttl">${n.title}</div>
+      <div class="desc">${n.desc}</div>
+    </a>
+  `).join('');
+}
+
+/* ---- チャートタブ（localStorage永続化） ---- */
+const CHART_STORAGE_KEY = 'pan_dashboard_charts';
+function loadChartTickers(){
+  try{
+    const raw = localStorage.getItem(CHART_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+function saveChartTickers(list){
+  try{ localStorage.setItem(CHART_STORAGE_KEY, JSON.stringify(list)); }catch(e){}
+}
+function renderCharts(){
+  const list = loadChartTickers();
+  const el = document.getElementById('chartList');
+  if(list.length===0){
+    el.innerHTML = `<div class="empty-state">まだ銘柄が追加されていません。上の欄にティッカーを入力して「＋追加」してください。</div>`;
+    return;
+  }
+  el.innerHTML = list.map(tk=>`
+    <div class="chart-box" data-ticker="${tk}">
+      <div class="chead">
+        <div class="tk">${tk}</div>
+        <button class="removeBtn" data-ticker="${tk}">✕</button>
+      </div>
+      <iframe src="https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tk)}&interval=D&theme=dark&style=1&locale=ja&toolbarbg=161b26&hide_top_toolbar=0&hide_legend=0&save_image=0"
+              loading="lazy"></iframe>
+    </div>
+  `).join('');
+  el.querySelectorAll('.removeBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tk = btn.getAttribute('data-ticker');
+      const newList = loadChartTickers().filter(x=>x!==tk);
+      saveChartTickers(newList);
+      renderCharts();
+    });
+  });
+}
+document.getElementById('addTickerBtn').addEventListener('click', addTickerFromInput);
+document.getElementById('tickerInput').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') addTickerFromInput();
+});
+function addTickerFromInput(){
+  const input = document.getElementById('tickerInput');
+  const val = input.value.trim().toUpperCase();
+  if(!val) return;
+  const list = loadChartTickers();
+  if(!list.includes(val)){
+    list.push(val);
+    saveChartTickers(list);
+  }
+  input.value = '';
+  renderCharts();
+}
+
+/* ---- タブ切り替え（クリック＋数字キー1〜5） ---- */
+const TAB_ORDER = ['summary','heatmap','sector','news','chart'];
+function switchTab(name){
+  TAB_ORDER.forEach(t=>{
+    document.getElementById('tab-'+t).classList.toggle('active', t===name);
+  });
+  document.querySelectorAll('#tabbar button').forEach(b=>{
+    b.classList.toggle('active', b.getAttribute('data-tab')===name);
+  });
+}
+document.querySelectorAll('#tabbar button').forEach(b=>{
+  b.addEventListener('click', ()=> switchTab(b.getAttribute('data-tab')));
+});
+document.addEventListener('keydown', (e)=>{
+  if(document.activeElement && document.activeElement.tagName==='INPUT') return;
+  const idx = parseInt(e.key,10);
+  if(idx>=1 && idx<=5){ switchTab(TAB_ORDER[idx-1]); }
+});
+
+/* ---- 初期化 ---- */
+document.getElementById('fetchedAtLabel').textContent = '取得日時: ' + DASHBOARD_DATA.fetchedAt;
+renderIndices();
+renderSentiment();
+renderMisc();
+renderHeatmap();
+renderSectors();
+renderNews();
+renderCharts();
+</script>
+</body>
+</html>
