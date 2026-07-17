@@ -32,7 +32,7 @@ if not API_KEY:
     sys.exit(1)
 
 BASE = "https://financialmodelingprep.com/stable"
-HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_dashboard.html")
 REQUEST_SLEEP = 0.2  # 無料プランのレート制限に配慮
 
 INDEX_SYMBOLS = [
@@ -63,14 +63,39 @@ COMMODITY_SYMBOLS = [
 
 FOREX_SYMBOLS = [("USDJPY", "USD/JPY"), ("EURUSD", "EUR/USD")]
 
+# 時価総額はヒートマップのタイルサイズ分類にしか使わず、日々の変動で
+# tier(1/2/3)がひっくり返ることはまず無いため、無料プランの1日250回制限を
+# 節約する目的で毎回API取得せず概算値を静的に持つ（単位: 10億ドル）。
+MARKET_CAP_HINTS_B = {
+    "AAPL": 4895, "MSFT": 2980, "GOOGL": 4287, "AMZN": 2688, "NVDA": 5023,
+    "META": 1687, "TSLA": 1469, "AVGO": 1781, "BRK-B": 1064, "LLY": 1102,
+    "JPM": 919, "V": 700, "UNH": 385, "XOM": 605, "MA": 487, "JNJ": 602,
+    "PG": 353, "HD": 347, "MRK": 315, "COST": 419, "ABBV": 450, "CVX": 366,
+    "KO": 365, "PEP": 191, "WMT": 915, "BAC": 436, "CRM": 141, "NFLX": 313,
+    "ADBE": 94,
+}
 
-def _get(path, params):
+
+def _get(path, params, retries=3):
     params = dict(params)
     params["apikey"] = API_KEY
-    r = requests.get(f"{BASE}/{path}", params=params, timeout=20)
-    time.sleep(REQUEST_SLEEP)
-    r.raise_for_status()
-    return r.json()
+    last_err = None
+    for attempt in range(retries):
+        try:
+            r = requests.get(f"{BASE}/{path}", params=params, timeout=20)
+            time.sleep(REQUEST_SLEEP)
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            last_err = e
+            if status in (429, 402) and attempt < retries - 1:
+                wait = 2 * (attempt + 1)
+                print(f"WARN: {path} で{status}。{wait}秒待って再試行 ({attempt+1}/{retries})", file=sys.stderr)
+                time.sleep(wait)
+                continue
+            raise
+    raise last_err
 
 
 def fetch_eod_series(symbol, days=90):
@@ -82,9 +107,18 @@ def fetch_eod_series(symbol, days=90):
             "symbol": symbol, "from": from_date.isoformat(), "to": to_date.isoformat(),
         })
     except requests.exceptions.HTTPError as e:
-        print(f"WARN: {symbol} のEODデータ取得に失敗: {e}", file=sys.stderr)
+        body = ""
+        try:
+            body = e.response.text[:200] if e.response is not None else ""
+        except Exception:
+            pass
+        print(f"WARN: {symbol} のEODデータ取得に失敗: {e} body={body}", file=sys.stderr)
         return []
-    if not isinstance(rows, list) or not rows:
+    if not isinstance(rows, list):
+        print(f"WARN: {symbol} のEODデータが想定外の形式: {str(rows)[:200]}", file=sys.stderr)
+        return []
+    if not rows:
+        print(f"WARN: {symbol} のEODデータが空でした", file=sys.stderr)
         return []
     out = []
     for row in rows:
@@ -109,26 +143,14 @@ def latest_and_change(series):
     return latest, chg_pct, sma50
 
 
-def fetch_market_cap(symbol):
-    try:
-        rows = _get("profile", {"symbol": symbol})
-    except requests.exceptions.HTTPError as e:
-        print(f"WARN: {symbol} のprofile取得に失敗: {e}", file=sys.stderr)
-        return None
-    if not isinstance(rows, list) or not rows:
-        return None
-    row = rows[0]
-    cap = row.get("marketCap", row.get("mktCap"))
-    return float(cap) if cap is not None else None
-
-
 def fetch_treasury_10y():
     try:
         rows = _get("treasury-rates", {})
     except requests.exceptions.HTTPError as e:
         print(f"WARN: treasury-ratesの取得に失敗: {e}", file=sys.stderr)
         return None, None
-    if not rows:
+    if not isinstance(rows, list) or not rows:
+        print(f"WARN: treasury-ratesが想定外の形式/空: {str(rows)[:200]}", file=sys.stderr)
         return None, None
     latest = rows[0]
     return latest.get("year10"), latest.get("date")
@@ -136,10 +158,14 @@ def fetch_treasury_10y():
 
 def fetch_news(limit=5):
     try:
-        return _get("news/general-latest", {"page": 0, "limit": limit})
+        rows = _get("news/general-latest", {"page": 0, "limit": limit})
     except requests.exceptions.HTTPError as e:
         print(f"WARN: newsの取得に失敗: {e}", file=sys.stderr)
         return []
+    if not isinstance(rows, list) or not rows:
+        print(f"WARN: newsが想定外の形式/空: {str(rows)[:200]}", file=sys.stderr)
+        return []
+    return rows
 
 
 def clamp(v, lo, hi):
@@ -186,8 +212,7 @@ def main():
         if chg_pct is None:
             print(f"WARN: {sym}(ヒートマップ) のデータが取得できませんでした（スキップ）", file=sys.stderr)
             continue
-        cap = fetch_market_cap(sym)
-        cap_b = (cap / 1e9) if cap else 100.0  # 取得失敗時は中位ダミー値
+        cap_b = MARKET_CAP_HINTS_B.get(sym, 100.0)
         tier = 1 if cap_b >= 2000 else (2 if cap_b >= 800 else 3)
         heatmap.append({"t": sym, "pct": chg_pct, "cap": round(cap_b, 1), "tier": tier})
         breadth_total += 1
