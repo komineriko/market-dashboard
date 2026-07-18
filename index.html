@@ -323,7 +323,7 @@
 ========================================================= */
 /* ===AUTO_UPDATE_DATA_START=== */
 const DASHBOARD_DATA = {
-  "fetchedAt": "2026年07月18日 08:54 JST 時点（FMP終値データ・自動更新）",
+  "fetchedAt": "2026年07月18日 09:18 JST 時点（FMP終値データ・自動更新）",
   "indices": [
     {
       "name": "S&P500",
@@ -389,7 +389,43 @@ const DASHBOARD_DATA = {
     "vix": 9,
     "label": "警戒"
   },
-  "sectors": [],
+  "sectors": [
+    {
+      "name": "エネルギー",
+      "ticker": "2銘柄平均",
+      "pct": 1.44
+    },
+    {
+      "name": "ヘルスケア",
+      "ticker": "3銘柄平均",
+      "pct": 0.64
+    },
+    {
+      "name": "テクノロジー",
+      "ticker": "4銘柄平均",
+      "pct": -0.77
+    },
+    {
+      "name": "金融",
+      "ticker": "3銘柄平均",
+      "pct": -0.92
+    },
+    {
+      "name": "生活必需品",
+      "ticker": "4銘柄平均",
+      "pct": -1.69
+    },
+    {
+      "name": "一般消費財",
+      "ticker": "2銘柄平均",
+      "pct": -1.83
+    },
+    {
+      "name": "通信サービス",
+      "ticker": "3銘柄平均",
+      "pct": -4.07
+    }
+  ],
   "heatmap": [
     {
       "t": "AAPL",
@@ -518,7 +554,36 @@ const DASHBOARD_DATA = {
       "tier": 3
     }
   ],
-  "news": []
+  "movers": {
+    "gainers": [
+      {
+        "t": "CVX",
+        "pct": 1.9
+      },
+      {
+        "t": "JNJ",
+        "pct": 1.23
+      },
+      {
+        "t": "XOM",
+        "pct": 0.99
+      }
+    ],
+    "losers": [
+      {
+        "t": "NFLX",
+        "pct": -7.26
+      },
+      {
+        "t": "KO",
+        "pct": -3.96
+      },
+      {
+        "t": "META",
+        "pct": -2.79
+      }
+    ]
+  }
 };
 /* ===AUTO_UPDATE_DATA_END=== */
 
