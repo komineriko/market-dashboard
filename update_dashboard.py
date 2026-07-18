@@ -153,6 +153,45 @@ def fetch_treasury_10y():
     return latest.get("year10"), latest.get("date")
 
 
+def fetch_alpaca_news(limit=5):
+    """Alpaca Market Data APIのNews(無料プラン含む)。
+    ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY が未設定、または
+    サブスクリプションで許可されていない場合は空リストを返す。"""
+    key_id = os.environ.get("ALPACA_API_KEY_ID")
+    secret = os.environ.get("ALPACA_API_SECRET_KEY")
+    if not key_id or not secret:
+        print("INFO: ALPACA_API_KEY_ID/SECRET未設定のためAlpacaニュースはスキップ", file=sys.stderr)
+        return []
+    try:
+        r = requests.get(
+            "https://data.alpaca.markets/v1beta1/news",
+            params={"limit": limit, "sort": "desc"},
+            headers={"APCA-API-KEY-ID": key_id, "APCA-API-SECRET-KEY": secret},
+            timeout=20,
+        )
+        r.raise_for_status()
+        payload = r.json()
+    except Exception as e:
+        print(f"WARN: Alpaca news取得に失敗: {e}", file=sys.stderr)
+        return []
+    articles = payload.get("news", []) if isinstance(payload, dict) else []
+    items = []
+    for a in articles[:limit]:
+        title = a.get("headline", "")
+        if not title:
+            continue
+        summary = str(a.get("summary") or "").strip()
+        if len(summary) > 130:
+            summary = summary[:130].rstrip() + "…"
+        items.append({
+            "pub": a.get("source", "Alpaca"),
+            "title": title,
+            "desc": summary,
+            "url": a.get("url", ""),
+        })
+    return items
+
+
 def fetch_yahoo_news(limit=5):
     """yfinance(Yahoo Financeの非公式ラッパー)からニュースを取得。
     失敗しても例外は投げず、空リストを返す(呼び出し側でmoversにフォールバック)。"""
@@ -252,10 +291,17 @@ def main():
         "losers": [{"t": h["t"], "pct": h["pct"]} for h in sorted_heatmap[-3:][::-1]],
     }
 
-    # ---- news (Yahoo Finance経由。失敗した場合は空リストのままmoversで代替表示) ----
-    news = fetch_yahoo_news(5)
+    # ---- news: Alpaca(優先) → Yahoo Finance(次点) → 失敗時はmoversで代替表示 ----
+    news = fetch_alpaca_news(5)
+    news_source = "alpaca"
     if not news:
+        news = fetch_yahoo_news(5)
+        news_source = "yahoo"
+    if not news:
+        news_source = "none"
         print("WARN: ニュースが0件のため、フロント側でmoversにフォールバック表示されます", file=sys.stderr)
+    else:
+        print(f"INFO: ニュースは{news_source}経由で{len(news)}件取得", file=sys.stderr)
 
     # ---- misc: commodities + forex + rate ----
     misc = []

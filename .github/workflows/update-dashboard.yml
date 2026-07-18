@@ -2,8 +2,8 @@ name: Update market dashboard
 
 on:
   schedule:
-    # 月〜土 05:50 JST = 前日 20:50 UTC（UTCの日曜〜金曜 = JSTの月曜〜土曜）
-    - cron: "50 20 * * 0-5"
+    # 平日 05:50 JST = 前日 20:50 UTC（UTCの日曜〜木曜 = JSTの月曜〜金曜）
+    - cron: "50 20 * * 0-4"
   workflow_dispatch: {}
 
 permissions:
@@ -31,14 +31,16 @@ jobs:
       - name: Fetch data and update dashboard
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
         run: python update_dashboard.py
 
       - name: Commit and push if changed
         run: |
           git config user.name "market-dashboard-bot"
           git config user.email "actions@users.noreply.github.com"
-          if ! git diff --quiet -- index.html; then
-            git add index.html
+          if ! git diff --quiet -- market_dashboard.html; then
+            git add market_dashboard.html
             git commit -m "chore: 自動更新 $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           else
