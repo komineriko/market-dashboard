@@ -72,7 +72,7 @@
   /* 指数カード */
   .index-grid{
     display:grid;
-    grid-template-columns:repeat(5,1fr);
+    grid-template-columns:repeat(4,1fr);
     gap:10px;
   }
   .index-card{
@@ -283,14 +283,18 @@
 
   <!-- 3. セクター -->
   <section class="tabpanel" id="tab-sector">
-    <div class="section-title">セクターETF 前日比パフォーマンス</div>
+    <div class="section-title">セクター動向（主要銘柄ベースの参考値）</div>
     <div class="sector-list" id="sectorList"></div>
+    <div class="sentiment-note" style="margin-top:14px;">※ FMP無料プランではセクターETFの実データが取得できないため、取得できている個別銘柄を業種別にグルーピングした平均騰落率を参考値として表示しています。公式のセクターETF実績とは異なります。</div>
   </section>
 
-  <!-- 4. ニュース -->
+  <!-- 4. 値動きハイライト -->
   <section class="tabpanel" id="tab-news">
-    <div class="section-title">マーケットニュース</div>
-    <div class="news-list" id="newsList"></div>
+    <div class="section-title">本日の値上がりトップ3</div>
+    <div class="sector-list" id="gainersList"></div>
+    <div class="section-title">本日の値下がりトップ3</div>
+    <div class="sector-list" id="losersList"></div>
+    <div class="sentiment-note" style="margin-top:14px;">※ 一般ニュースAPIがFMP無料プランで利用できないため、取得できている銘柄の値動きランキングに置き換えています。</div>
   </section>
 
   <!-- 5. チャート -->
@@ -308,7 +312,7 @@
   <button data-tab="summary" class="active"><span class="ic">📊</span><span class="lb">サマリー</span></button>
   <button data-tab="heatmap"><span class="ic">🗺️</span><span class="lb">ヒートマップ</span></button>
   <button data-tab="sector"><span class="ic">🏭</span><span class="lb">セクター</span></button>
-  <button data-tab="news"><span class="ic">📰</span><span class="lb">ニュース</span></button>
+  <button data-tab="news"><span class="ic">🔥</span><span class="lb">値動き</span></button>
   <button data-tab="chart"><span class="ic">📈</span><span class="lb">チャート</span></button>
 </nav>
 
@@ -606,15 +610,17 @@ function renderSectors(){
   }).join('');
 }
 
-function renderNews(){
-  const el = document.getElementById('newsList');
-  el.innerHTML = DASHBOARD_DATA.news.map(n=>`
-    <a class="news-item" href="${n.url}" target="_blank" rel="noopener">
-      <div class="pub">${n.pub}</div>
-      <div class="ttl">${n.title}</div>
-      <div class="desc">${n.desc}</div>
-    </a>
-  `).join('');
+function renderMoverRow(m){
+  return `
+    <div class="sector-row">
+      <div class="sname">${m.t}</div>
+      <div class="spct ${pctClass(m.pct)}" style="flex:1;text-align:left;">${fmtPct(m.pct)}</div>
+    </div>`;
+}
+function renderMovers(){
+  const movers = DASHBOARD_DATA.movers || {gainers:[], losers:[]};
+  document.getElementById('gainersList').innerHTML = movers.gainers.map(renderMoverRow).join('') || `<div class="empty-state">データがありません</div>`;
+  document.getElementById('losersList').innerHTML = movers.losers.map(renderMoverRow).join('') || `<div class="empty-state">データがありません</div>`;
 }
 
 /* ---- チャートタブ（localStorage永続化） ---- */
@@ -697,7 +703,7 @@ renderSentiment();
 renderMisc();
 renderHeatmap();
 renderSectors();
-renderNews();
+renderMovers();
 renderCharts();
 </script>
 </body>

@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-米国株マーケットダッシュボード 自動更新スクリプト (v2: 無料プラン対応版)
+米国株マーケットダッシュボード 自動更新スクリプト (v3: 無料プラン確定版)
 
-FMPの無料プランはリアルタイムQuote系エンドポイント(quote / batch-quote 等)には
-アクセスできず、402 Payment Required が返る。
-一方で以下は無料プランでも利用可能:
-  - historical-price-eod/light (終値の日次データ)
-  - profile (会社プロフィール。時価総額を含む)
-  - treasury-rates / news/general-latest
+検証の結果、FMP無料プランでは以下が「Premium Query Parameter」として
+アクセス不可であることが判明した:
+  - セクターETF (XLC, XLY, ...) 全銘柄
+  - 一部の個別銘柄 (BRK-B, LLY, AVGO, MA, PG, HD, MRK, CRM)
+  - NASDAQ100指数 (^NDX)
+  - 一部コモディティ (原油CLUSD, 天然ガスNGUSD)
+  - news/general-latest (一般ニュース)
 
-そのため、このバージョンでは全ての価格取得を historical-price-eod/light
-(前日終値ベース)に切り替え、当日比・50日移動平均も自前で計算する。
+そのため本バージョンでは、無料プランで確実に取得できる指数4種・個別株21銘柄・
+コモディティ2種・為替2種・10年国債利回りのみをAPIから取得し、
+「セクター」と「ニュース」はAPI呼び出しをやめ、取得済みの21銘柄データから
+自前で算出する参考値（業種別平均騰落率・値動きトップ3）に置き換えている。
+FMPの有料プランにアップグレードすれば元のETF/ニュースベースに戻せる。
 
 market_dashboard.html 内の
   /* ===AUTO_UPDATE_DATA_START=== */ ... /* ===AUTO_UPDATE_DATA_END=== */
@@ -33,46 +37,46 @@ if not API_KEY:
 
 BASE = "https://financialmodelingprep.com/stable"
 HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
-REQUEST_SLEEP = 0.2  # 無料プランのレート制限に配慮
+REQUEST_SLEEP = 0.2
 
+# 無料プランで確認済みの指数(NASDAQ100は非対応のため除外)
 INDEX_SYMBOLS = [
     ("^GSPC", "S&P500"),
-    ("^NDX", "NASDAQ100"),
     ("^DJI", "NYダウ"),
     ("^RUT", "ラッセル2000"),
     ("^VIX", "VIX"),
 ]
 
-SECTOR_SYMBOLS = [
-    ("XLP", "生活必需品"), ("XLV", "ヘルスケア"), ("XLRE", "不動産"),
-    ("XLE", "エネルギー"), ("XLB", "素材"), ("XLU", "公共事業"),
-    ("XLF", "金融"), ("XLY", "一般消費財"), ("XLI", "資本財"),
-    ("XLC", "通信サービス"), ("XLK", "情報技術"),
-]
-
+# 無料プランで確認済みの21銘柄(BRK-B/LLY/AVGO/MA/PG/HD/MRK/CRMは非対応のため除外)
 HEATMAP_SYMBOLS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "LLY",
-    "AVGO", "JPM", "V", "UNH", "XOM", "MA", "JNJ", "PG", "HD", "MRK", "COST",
-    "ABBV", "CVX", "KO", "PEP", "WMT", "BAC", "CRM", "NFLX", "ADBE",
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+    "JPM", "V", "UNH", "XOM", "JNJ", "COST", "ABBV", "CVX",
+    "KO", "PEP", "WMT", "BAC", "NFLX", "ADBE",
 ]
 
+# セクター参考値の算出に使う業種グルーピング(上記21銘柄のみで構成)
+SECTOR_STOCK_MAP = {
+    "テクノロジー": ["AAPL", "MSFT", "NVDA", "ADBE"],
+    "通信サービス": ["GOOGL", "META", "NFLX"],
+    "一般消費財": ["AMZN", "TSLA"],
+    "金融": ["JPM", "V", "BAC"],
+    "ヘルスケア": ["UNH", "JNJ", "ABBV"],
+    "エネルギー": ["XOM", "CVX"],
+    "生活必需品": ["COST", "KO", "PEP", "WMT"],
+}
+
+# 無料プランで確認済みのコモディティ(原油/天然ガスは非対応のため除外)
 COMMODITY_SYMBOLS = [
-    ("GCUSD", "金 (Gold)"), ("CLUSD", "原油 (WTI)"),
-    ("SIUSD", "銀 (Silver)"), ("NGUSD", "天然ガス"),
+    ("GCUSD", "金 (Gold)"), ("SIUSD", "銀 (Silver)"),
 ]
 
 FOREX_SYMBOLS = [("USDJPY", "USD/JPY"), ("EURUSD", "EUR/USD")]
 
-# 時価総額はヒートマップのタイルサイズ分類にしか使わず、日々の変動で
-# tier(1/2/3)がひっくり返ることはまず無いため、無料プランの1日250回制限を
-# 節約する目的で毎回API取得せず概算値を静的に持つ（単位: 10億ドル）。
 MARKET_CAP_HINTS_B = {
     "AAPL": 4895, "MSFT": 2980, "GOOGL": 4287, "AMZN": 2688, "NVDA": 5023,
-    "META": 1687, "TSLA": 1469, "AVGO": 1781, "BRK-B": 1064, "LLY": 1102,
-    "JPM": 919, "V": 700, "UNH": 385, "XOM": 605, "MA": 487, "JNJ": 602,
-    "PG": 353, "HD": 347, "MRK": 315, "COST": 419, "ABBV": 450, "CVX": 366,
-    "KO": 365, "PEP": 191, "WMT": 915, "BAC": 436, "CRM": 141, "NFLX": 313,
-    "ADBE": 94,
+    "META": 1687, "TSLA": 1469, "JPM": 919, "V": 700, "UNH": 385,
+    "XOM": 605, "JNJ": 602, "COST": 419, "ABBV": 450, "CVX": 366,
+    "KO": 365, "PEP": 191, "WMT": 915, "BAC": 436, "NFLX": 313, "ADBE": 94,
 }
 
 
@@ -99,7 +103,6 @@ def _get(path, params, retries=3):
 
 
 def fetch_eod_series(symbol, days=90):
-    """終値の時系列を日付昇順で返す。各要素は {date, price}"""
     to_date = datetime.now(timezone.utc).date()
     from_date = to_date - timedelta(days=days)
     try:
@@ -114,11 +117,7 @@ def fetch_eod_series(symbol, days=90):
             pass
         print(f"WARN: {symbol} のEODデータ取得に失敗: {e} body={body}", file=sys.stderr)
         return []
-    if not isinstance(rows, list):
-        print(f"WARN: {symbol} のEODデータが想定外の形式: {str(rows)[:200]}", file=sys.stderr)
-        return []
-    if not rows:
-        print(f"WARN: {symbol} のEODデータが空でした", file=sys.stderr)
+    if not isinstance(rows, list) or not rows:
         return []
     out = []
     for row in rows:
@@ -132,7 +131,6 @@ def fetch_eod_series(symbol, days=90):
 
 
 def latest_and_change(series):
-    """直近終値・前日比%・50日移動平均を返す"""
     if len(series) < 2:
         return None, None, None
     latest = series[-1]["price"]
@@ -150,22 +148,9 @@ def fetch_treasury_10y():
         print(f"WARN: treasury-ratesの取得に失敗: {e}", file=sys.stderr)
         return None, None
     if not isinstance(rows, list) or not rows:
-        print(f"WARN: treasury-ratesが想定外の形式/空: {str(rows)[:200]}", file=sys.stderr)
         return None, None
     latest = rows[0]
     return latest.get("year10"), latest.get("date")
-
-
-def fetch_news(limit=5):
-    try:
-        rows = _get("news/general-latest", {"page": 0, "limit": limit})
-    except requests.exceptions.HTTPError as e:
-        print(f"WARN: newsの取得に失敗: {e}", file=sys.stderr)
-        return []
-    if not isinstance(rows, list) or not rows:
-        print(f"WARN: newsが想定外の形式/空: {str(rows)[:200]}", file=sys.stderr)
-        return []
-    return rows
 
 
 def clamp(v, lo, hi):
@@ -191,18 +176,7 @@ def main():
         })
         index_latest[sym] = {"price": latest, "sma50": sma50, "pct": chg_pct}
 
-    # ---- sectors ----
-    sectors = []
-    for sym, name in SECTOR_SYMBOLS:
-        series = fetch_eod_series(sym, days=20)
-        _, chg_pct, _ = latest_and_change(series)
-        if chg_pct is None:
-            print(f"WARN: {sym}(セクター) のデータが取得できませんでした（スキップ）", file=sys.stderr)
-            continue
-        sectors.append({"name": name, "ticker": sym, "pct": chg_pct})
-    sectors.sort(key=lambda s: s["pct"], reverse=True)
-
-    # ---- heatmap (価格 + 時価総額) ----
+    # ---- heatmap ----
     heatmap = []
     breadth_up = 0
     breadth_total = 0
@@ -218,6 +192,25 @@ def main():
         breadth_total += 1
         if chg_pct > 0:
             breadth_up += 1
+
+    heatmap_pct = {h["t"]: h["pct"] for h in heatmap}
+
+    # ---- sectors (ETFの代わりに21銘柄からの参考値) ----
+    sectors = []
+    for name, members in SECTOR_STOCK_MAP.items():
+        vals = [heatmap_pct[m] for m in members if m in heatmap_pct]
+        if not vals:
+            continue
+        avg = round(sum(vals) / len(vals), 2)
+        sectors.append({"name": name, "ticker": f"{len(vals)}銘柄平均", "pct": avg})
+    sectors.sort(key=lambda s: s["pct"], reverse=True)
+
+    # ---- movers (ニュースの代わりに値動きハイライト) ----
+    sorted_heatmap = sorted(heatmap, key=lambda h: h["pct"], reverse=True)
+    movers = {
+        "gainers": [{"t": h["t"], "pct": h["pct"]} for h in sorted_heatmap[:3]],
+        "losers": [{"t": h["t"], "pct": h["pct"]} for h in sorted_heatmap[-3:][::-1]],
+    }
 
     # ---- misc: commodities + forex + rate ----
     misc = []
@@ -254,20 +247,6 @@ def main():
     score = round((breadth + momentum + vix_component) / 3)
     label = "警戒" if score < 40 else ("楽観" if score > 60 else "中立")
 
-    # ---- news ----
-    news_raw = fetch_news(5)
-    news = []
-    for item in news_raw[:5]:
-        text = (item.get("text") or "").strip()
-        if len(text) > 130:
-            text = text[:130].rstrip() + "…"
-        news.append({
-            "pub": item.get("publisher") or item.get("site") or "",
-            "title": item.get("title") or "",
-            "desc": text,
-            "url": item.get("url") or "",
-        })
-
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst)
     fetched_at = now_jst.strftime("%Y年%m月%d日 %H:%M JST 時点（FMP終値データ・自動更新）")
@@ -279,7 +258,7 @@ def main():
         "sentiment": {"score": score, "breadth": breadth, "momentum": momentum, "vix": vix_component, "label": label},
         "sectors": sectors,
         "heatmap": heatmap,
-        "news": news,
+        "movers": movers,
     }
 
     js_block = (
@@ -306,8 +285,8 @@ def main():
     with open(HTML_PATH, "w", encoding="utf-8") as f:
         f.write(new_html)
 
-    print(f"OK: {fetched_at} で更新（指数{len(indices)}件・セクター{len(sectors)}件・"
-          f"ヒートマップ{len(heatmap)}件・ニュース{len(news)}件, センチメント={score}[{label}]）")
+    print(f"OK: {fetched_at} で更新（指数{len(indices)}件・セクター参考値{len(sectors)}件・"
+          f"ヒートマップ{len(heatmap)}件, センチメント={score}[{label}]）")
 
 
 if __name__ == "__main__":
