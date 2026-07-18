@@ -288,13 +288,17 @@
     <div class="sentiment-note" style="margin-top:14px;">※ FMP無料プランではセクターETFの実データが取得できないため、取得できている個別銘柄を業種別にグルーピングした平均騰落率を参考値として表示しています。公式のセクターETF実績とは異なります。</div>
   </section>
 
-  <!-- 4. 値動きハイライト -->
+  <!-- 4. ニュース -->
   <section class="tabpanel" id="tab-news">
-    <div class="section-title">本日の値上がりトップ3</div>
-    <div class="sector-list" id="gainersList"></div>
-    <div class="section-title">本日の値下がりトップ3</div>
-    <div class="sector-list" id="losersList"></div>
-    <div class="sentiment-note" style="margin-top:14px;">※ 一般ニュースAPIがFMP無料プランで利用できないため、取得できている銘柄の値動きランキングに置き換えています。</div>
+    <div class="section-title" id="newsSectionTitle">マーケットニュース</div>
+    <div class="news-list" id="newsList"></div>
+    <div id="moversFallback" style="display:none;">
+      <div class="section-title">本日の値上がりトップ3</div>
+      <div class="sector-list" id="gainersList"></div>
+      <div class="section-title">本日の値下がりトップ3</div>
+      <div class="sector-list" id="losersList"></div>
+      <div class="sentiment-note" style="margin-top:14px;">※ 本日はニュースが取得できなかったため、値動きランキングを代わりに表示しています。</div>
+    </div>
   </section>
 
   <!-- 5. チャート -->
@@ -312,7 +316,7 @@
   <button data-tab="summary" class="active"><span class="ic">📊</span><span class="lb">サマリー</span></button>
   <button data-tab="heatmap"><span class="ic">🗺️</span><span class="lb">ヒートマップ</span></button>
   <button data-tab="sector"><span class="ic">🏭</span><span class="lb">セクター</span></button>
-  <button data-tab="news"><span class="ic">🔥</span><span class="lb">値動き</span></button>
+  <button data-tab="news"><span class="ic">📰</span><span class="lb">ニュース</span></button>
   <button data-tab="chart"><span class="ic">📈</span><span class="lb">チャート</span></button>
 </nav>
 
@@ -682,10 +686,27 @@ function renderMoverRow(m){
       <div class="spct ${pctClass(m.pct)}" style="flex:1;text-align:left;">${fmtPct(m.pct)}</div>
     </div>`;
 }
-function renderMovers(){
-  const movers = DASHBOARD_DATA.movers || {gainers:[], losers:[]};
-  document.getElementById('gainersList').innerHTML = movers.gainers.map(renderMoverRow).join('') || `<div class="empty-state">データがありません</div>`;
-  document.getElementById('losersList').innerHTML = movers.losers.map(renderMoverRow).join('') || `<div class="empty-state">データがありません</div>`;
+function renderNewsOrFallback(){
+  const news = DASHBOARD_DATA.news || [];
+  const newsListEl = document.getElementById('newsList');
+  const fallbackEl = document.getElementById('moversFallback');
+  if(news.length > 0){
+    newsListEl.style.display = '';
+    fallbackEl.style.display = 'none';
+    newsListEl.innerHTML = news.map(n=>`
+      <a class="news-item" href="${n.url}" target="_blank" rel="noopener">
+        <div class="pub">${n.pub}</div>
+        <div class="ttl">${n.title}</div>
+        <div class="desc">${n.desc}</div>
+      </a>
+    `).join('');
+  } else {
+    newsListEl.style.display = 'none';
+    fallbackEl.style.display = '';
+    const movers = DASHBOARD_DATA.movers || {gainers:[], losers:[]};
+    document.getElementById('gainersList').innerHTML = movers.gainers.map(renderMoverRow).join('') || `<div class="empty-state">データがありません</div>`;
+    document.getElementById('losersList').innerHTML = movers.losers.map(renderMoverRow).join('') || `<div class="empty-state">データがありません</div>`;
+  }
 }
 
 /* ---- チャートタブ（localStorage永続化） ---- */
@@ -768,7 +789,7 @@ renderSentiment();
 renderMisc();
 renderHeatmap();
 renderSectors();
-renderMovers();
+renderNewsOrFallback();
 renderCharts();
 </script>
 </body>

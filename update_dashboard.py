@@ -153,6 +153,46 @@ def fetch_treasury_10y():
     return latest.get("year10"), latest.get("date")
 
 
+def fetch_yahoo_news(limit=5):
+    """yfinance(Yahoo Financeの非公式ラッパー)からニュースを取得。
+    失敗しても例外は投げず、空リストを返す(呼び出し側でmoversにフォールバック)。"""
+    try:
+        import yfinance as yf
+    except Exception as e:
+        print(f"WARN: yfinanceのimportに失敗: {e}", file=sys.stderr)
+        return []
+
+    symbols_to_try = ["^GSPC", "AAPL", "MSFT", "NVDA"]
+    seen_titles = set()
+    items = []
+    for sym in symbols_to_try:
+        try:
+            raw_list = yf.Ticker(sym).news or []
+        except Exception as e:
+            print(f"WARN: yfinance news取得失敗({sym}): {e}", file=sys.stderr)
+            continue
+        for raw in raw_list:
+            content = raw.get("content") if isinstance(raw.get("content"), dict) else raw
+            title = content.get("title") or raw.get("title")
+            if not title or title in seen_titles:
+                continue
+            seen_titles.add(title)
+            provider = content.get("provider")
+            pub = provider.get("displayName") if isinstance(provider, dict) else (raw.get("publisher") or "Yahoo Finance")
+            canon = content.get("canonicalUrl")
+            url = canon.get("url") if isinstance(canon, dict) else raw.get("link", "")
+            summary = content.get("summary") or content.get("description") or ""
+            summary = str(summary).strip()
+            if len(summary) > 130:
+                summary = summary[:130].rstrip() + "…"
+            items.append({"pub": pub, "title": title, "desc": summary, "url": url})
+            if len(items) >= limit:
+                break
+        if len(items) >= limit:
+            break
+    return items[:limit]
+
+
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
@@ -205,12 +245,17 @@ def main():
         sectors.append({"name": name, "ticker": f"{len(vals)}銘柄平均", "pct": avg})
     sectors.sort(key=lambda s: s["pct"], reverse=True)
 
-    # ---- movers (ニュースの代わりに値動きハイライト) ----
+    # ---- movers (ニュース取得に失敗した場合のフォールバック用) ----
     sorted_heatmap = sorted(heatmap, key=lambda h: h["pct"], reverse=True)
     movers = {
         "gainers": [{"t": h["t"], "pct": h["pct"]} for h in sorted_heatmap[:3]],
         "losers": [{"t": h["t"], "pct": h["pct"]} for h in sorted_heatmap[-3:][::-1]],
     }
+
+    # ---- news (Yahoo Finance経由。失敗した場合は空リストのままmoversで代替表示) ----
+    news = fetch_yahoo_news(5)
+    if not news:
+        print("WARN: ニュースが0件のため、フロント側でmoversにフォールバック表示されます", file=sys.stderr)
 
     # ---- misc: commodities + forex + rate ----
     misc = []
@@ -259,6 +304,7 @@ def main():
         "sectors": sectors,
         "heatmap": heatmap,
         "movers": movers,
+        "news": news,
     }
 
     js_block = (
@@ -286,7 +332,7 @@ def main():
         f.write(new_html)
 
     print(f"OK: {fetched_at} で更新（指数{len(indices)}件・セクター参考値{len(sectors)}件・"
-          f"ヒートマップ{len(heatmap)}件, センチメント={score}[{label}]）")
+          f"ヒートマップ{len(heatmap)}件・ニュース{len(news)}件, センチメント={score}[{label}]）")
 
 
 if __name__ == "__main__":
