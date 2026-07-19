@@ -39,7 +39,7 @@ BASE = "https://financialmodelingprep.com/stable"
 HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 REQUEST_SLEEP = 0.2
 
-# 無料プランで確認済みの指数(NASDAQ100は非対応のため除外)
+# 指数(NASDAQ100はFinnhub経由でQQQ ETFを代理指標として使用)
 INDEX_SYMBOLS = [
     ("^GSPC", "S&P500"),
     ("^DJI", "NYダウ"),
@@ -47,14 +47,27 @@ INDEX_SYMBOLS = [
     ("^VIX", "VIX"),
 ]
 
-# 無料プランで確認済みの21銘柄(BRK-B/LLY/AVGO/MA/PG/HD/MRK/CRMは非対応のため除外)
-HEATMAP_SYMBOLS = [
+# メガキャップ29銘柄(Finnhub未設定時はFMPで確認済みの21銘柄のみにフォールバック)
+HEATMAP_SYMBOLS_FULL = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "LLY",
+    "AVGO", "JPM", "V", "UNH", "XOM", "MA", "JNJ", "PG", "HD", "MRK", "COST",
+    "ABBV", "CVX", "KO", "PEP", "WMT", "BAC", "CRM", "NFLX", "ADBE",
+]
+HEATMAP_SYMBOLS_FMP_ONLY = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
     "JPM", "V", "UNH", "XOM", "JNJ", "COST", "ABBV", "CVX",
     "KO", "PEP", "WMT", "BAC", "NFLX", "ADBE",
 ]
 
-# セクター参考値の算出に使う業種グルーピング(上記21銘柄のみで構成)
+# セクターETF(Finnhub経由で実データ取得。未設定時はSECTOR_STOCK_MAPで代用)
+SECTOR_ETF_SYMBOLS = [
+    ("XLC", "通信サービス"), ("XLY", "一般消費財"), ("XLP", "生活必需品"),
+    ("XLE", "エネルギー"), ("XLF", "金融"), ("XLV", "ヘルスケア"),
+    ("XLI", "資本財"), ("XLB", "素材"), ("XLRE", "不動産"),
+    ("XLK", "テクノロジー"), ("XLU", "公共事業"),
+]
+
+# セクター参考値の算出に使う業種グルーピング(Finnhub未設定時のフォールバック用)
 SECTOR_STOCK_MAP = {
     "テクノロジー": ["AAPL", "MSFT", "NVDA", "ADBE"],
     "通信サービス": ["GOOGL", "META", "NFLX"],
@@ -74,10 +87,14 @@ FOREX_SYMBOLS = [("USDJPY", "USD/JPY"), ("EURUSD", "EUR/USD")]
 
 MARKET_CAP_HINTS_B = {
     "AAPL": 4895, "MSFT": 2980, "GOOGL": 4287, "AMZN": 2688, "NVDA": 5023,
-    "META": 1687, "TSLA": 1469, "JPM": 919, "V": 700, "UNH": 385,
-    "XOM": 605, "JNJ": 602, "COST": 419, "ABBV": 450, "CVX": 366,
-    "KO": 365, "PEP": 191, "WMT": 915, "BAC": 436, "NFLX": 313, "ADBE": 94,
+    "META": 1687, "TSLA": 1469, "BRK-B": 1064, "LLY": 1102, "AVGO": 1781,
+    "JPM": 919, "V": 700, "UNH": 385, "XOM": 605, "MA": 487, "JNJ": 602,
+    "PG": 353, "HD": 347, "MRK": 315, "COST": 419, "ABBV": 450, "CVX": 366,
+    "KO": 365, "PEP": 191, "WMT": 915, "BAC": 436, "CRM": 141, "NFLX": 313,
+    "ADBE": 94,
 }
+FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY")
+
 
 
 def _get(path, params, retries=3):
@@ -139,6 +156,43 @@ def latest_and_change(series):
     window = series[-50:] if len(series) >= 50 else series
     sma50 = sum(x["price"] for x in window) / len(window)
     return latest, chg_pct, sma50
+
+
+def fetch_finnhub_quote(symbol, retries=3):
+    """Finnhub /quote エンドポイント。現在値・前日比%を返す。失敗時は(None, None)。"""
+    if not FINNHUB_KEY:
+        return None, None
+    last_err = None
+    for attempt in range(retries):
+        try:
+            r = requests.get(
+                "https://finnhub.io/api/v1/quote",
+                params={"symbol": symbol, "token": FINNHUB_KEY},
+                timeout=20,
+            )
+            time.sleep(0.15)
+            r.raise_for_status()
+            data = r.json()
+            price = data.get("c")
+            pct = data.get("dp")
+            if price is None or price == 0:
+                print(f"WARN: Finnhub {symbol} のデータが空でした: {data}", file=sys.stderr)
+                return None, None
+            return round(float(price), 2), round(float(pct), 2) if pct is not None else None
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            last_err = e
+            if status == 429 and attempt < retries - 1:
+                wait = 2 * (attempt + 1)
+                print(f"WARN: Finnhub {symbol} で429。{wait}秒待って再試行", file=sys.stderr)
+                time.sleep(wait)
+                continue
+            print(f"WARN: Finnhub {symbol} 取得失敗: {e}", file=sys.stderr)
+            return None, None
+        except Exception as e:
+            print(f"WARN: Finnhub {symbol} 取得失敗: {e}", file=sys.stderr)
+            return None, None
+    return None, None
 
 
 def fetch_treasury_10y():
@@ -259,33 +313,65 @@ def main():
         })
         index_latest[sym] = {"price": latest, "sma50": sma50, "pct": chg_pct}
 
+    # NASDAQ100はFMP無料プランで非対応のため、Finnhub経由でQQQ(ETF)を代理指標として追加
+    if FINNHUB_KEY:
+        qqq_price, qqq_pct = fetch_finnhub_quote("QQQ")
+        if qqq_price is not None:
+            indices.insert(1, {
+                "name": "NASDAQ100(QQQ)", "symbol": "QQQ",
+                "price": qqq_price,
+                "chg": round(qqq_price * qqq_pct / 100, 2) if qqq_pct is not None else 0,
+                "pct": qqq_pct,
+            })
+
     # ---- heatmap ----
     heatmap = []
     breadth_up = 0
     breadth_total = 0
-    for sym in HEATMAP_SYMBOLS:
-        series = fetch_eod_series(sym, days=20)
-        _, chg_pct, _ = latest_and_change(series)
-        if chg_pct is None:
-            print(f"WARN: {sym}(ヒートマップ) のデータが取得できませんでした（スキップ）", file=sys.stderr)
-            continue
-        cap_b = MARKET_CAP_HINTS_B.get(sym, 100.0)
-        tier = 1 if cap_b >= 2000 else (2 if cap_b >= 800 else 3)
-        heatmap.append({"t": sym, "pct": chg_pct, "cap": round(cap_b, 1), "tier": tier})
-        breadth_total += 1
-        if chg_pct > 0:
-            breadth_up += 1
+    if FINNHUB_KEY:
+        for sym in HEATMAP_SYMBOLS_FULL:
+            price, pct = fetch_finnhub_quote(sym)
+            if pct is None:
+                print(f"WARN: {sym}(ヒートマップ/Finnhub) のデータが取得できませんでした（スキップ）", file=sys.stderr)
+                continue
+            cap_b = MARKET_CAP_HINTS_B.get(sym, 100.0)
+            tier = 1 if cap_b >= 2000 else (2 if cap_b >= 800 else 3)
+            heatmap.append({"t": sym, "pct": pct, "cap": round(cap_b, 1), "tier": tier})
+            breadth_total += 1
+            if pct > 0:
+                breadth_up += 1
+    else:
+        for sym in HEATMAP_SYMBOLS_FMP_ONLY:
+            series = fetch_eod_series(sym, days=20)
+            _, chg_pct, _ = latest_and_change(series)
+            if chg_pct is None:
+                print(f"WARN: {sym}(ヒートマップ) のデータが取得できませんでした（スキップ）", file=sys.stderr)
+                continue
+            cap_b = MARKET_CAP_HINTS_B.get(sym, 100.0)
+            tier = 1 if cap_b >= 2000 else (2 if cap_b >= 800 else 3)
+            heatmap.append({"t": sym, "pct": chg_pct, "cap": round(cap_b, 1), "tier": tier})
+            breadth_total += 1
+            if chg_pct > 0:
+                breadth_up += 1
 
     heatmap_pct = {h["t"]: h["pct"] for h in heatmap}
 
-    # ---- sectors (ETFの代わりに21銘柄からの参考値) ----
+    # ---- sectors: Finnhub経由でセクターETFの実データを取得。未設定時は21銘柄からの参考値 ----
     sectors = []
-    for name, members in SECTOR_STOCK_MAP.items():
-        vals = [heatmap_pct[m] for m in members if m in heatmap_pct]
-        if not vals:
-            continue
-        avg = round(sum(vals) / len(vals), 2)
-        sectors.append({"name": name, "ticker": f"{len(vals)}銘柄平均", "pct": avg})
+    if FINNHUB_KEY:
+        for sym, name in SECTOR_ETF_SYMBOLS:
+            price, pct = fetch_finnhub_quote(sym)
+            if pct is None:
+                print(f"WARN: {sym}(セクターETF/Finnhub) のデータが取得できませんでした（スキップ）", file=sys.stderr)
+                continue
+            sectors.append({"name": name, "ticker": sym, "pct": pct})
+    if not sectors:
+        for name, members in SECTOR_STOCK_MAP.items():
+            vals = [heatmap_pct[m] for m in members if m in heatmap_pct]
+            if not vals:
+                continue
+            avg = round(sum(vals) / len(vals), 2)
+            sectors.append({"name": name, "ticker": f"{len(vals)}銘柄平均", "pct": avg})
     sectors.sort(key=lambda s: s["pct"], reverse=True)
 
     # ---- movers (ニュース取得に失敗した場合のフォールバック用) ----

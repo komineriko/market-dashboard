@@ -72,7 +72,7 @@
   /* 指数カード */
   .index-grid{
     display:grid;
-    grid-template-columns:repeat(4,1fr);
+    grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
     gap:10px;
   }
   .index-card{
@@ -283,9 +283,9 @@
 
   <!-- 3. セクター -->
   <section class="tabpanel" id="tab-sector">
-    <div class="section-title">セクター動向（主要銘柄ベースの参考値）</div>
+    <div class="section-title" id="sectorSectionTitle">セクター動向</div>
     <div class="sector-list" id="sectorList"></div>
-    <div class="sentiment-note" style="margin-top:14px;">※ FMP無料プランではセクターETFの実データが取得できないため、取得できている個別銘柄を業種別にグルーピングした平均騰落率を参考値として表示しています。公式のセクターETF実績とは異なります。</div>
+    <div class="sentiment-note" style="margin-top:14px;" id="sectorNote"></div>
   </section>
 
   <!-- 4. ニュース -->
@@ -694,8 +694,14 @@ function renderHeatmap(){
 
 function renderSectors(){
   const el = document.getElementById('sectorList');
-  const maxAbs = Math.max(...DASHBOARD_DATA.sectors.map(s=>Math.abs(s.pct)), 1);
-  el.innerHTML = DASHBOARD_DATA.sectors.map(s=>{
+  const sectors = DASHBOARD_DATA.sectors || [];
+  const isRealETF = sectors.length > 0 && !String(sectors[0].ticker).includes('銘柄平均');
+  document.getElementById('sectorSectionTitle').textContent = isRealETF ? 'セクターETF 前日比パフォーマンス' : 'セクター動向（主要銘柄ベースの参考値）';
+  document.getElementById('sectorNote').textContent = isRealETF
+    ? '※ Finnhub経由のセクターETF実績データです。'
+    : '※ セクターETFの実データが取得できないため、取得できている個別銘柄を業種別にグルーピングした平均騰落率を参考値として表示しています。公式のセクターETF実績とは異なります。';
+  const maxAbs = Math.max(...sectors.map(s=>Math.abs(s.pct)), 1);
+  el.innerHTML = sectors.map(s=>{
     const w = Math.abs(s.pct)/maxAbs*50;
     const isUp = s.pct>=0;
     const left = isUp? '50%' : `calc(50% - ${w}%)`;
