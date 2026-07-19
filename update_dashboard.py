@@ -292,6 +292,31 @@ def fetch_yahoo_news(limit=5, symbols=None):
     return items[:limit]
 
 
+def translate_news_items(items):
+    """ニュースのtitle/descを日本語に翻訳する。失敗した記事は原文のまま残す。"""
+    if not items:
+        return items
+    try:
+        from deep_translator import GoogleTranslator
+    except Exception as e:
+        print(f"WARN: deep_translatorのimportに失敗、翻訳をスキップ: {e}", file=sys.stderr)
+        return items
+    translator = GoogleTranslator(source="en", target="ja")
+    for item in items:
+        try:
+            if item.get("title"):
+                item["title"] = translator.translate(item["title"][:400])
+        except Exception as e:
+            print(f"WARN: タイトル翻訳失敗: {e}", file=sys.stderr)
+        try:
+            if item.get("desc"):
+                item["desc"] = translator.translate(item["desc"][:400])
+        except Exception as e:
+            print(f"WARN: 本文翻訳失敗: {e}", file=sys.stderr)
+        time.sleep(0.3)
+    return items
+
+
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
@@ -410,6 +435,8 @@ def main():
         print("WARN: ニュースが0件のため、フロント側でmoversにフォールバック表示されます", file=sys.stderr)
     else:
         print(f"INFO: ニュースは{news_source}経由で{len(news)}件取得", file=sys.stderr)
+        news = translate_news_items(news)
+        print("INFO: ニュースの日本語翻訳を試行しました", file=sys.stderr)
 
     # ---- misc: commodities + forex + rate ----
     misc = []
