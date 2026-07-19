@@ -326,6 +326,17 @@ def main():
                 "pct": qqq_pct,
             })
 
+    # KOSPI(^KS11)がFMPで取得できなかった場合、Finnhub経由で韓国ETF(EWY)を代理指標として追加
+    if FINNHUB_KEY and not any(i["symbol"] == "^KS11" for i in indices):
+        ewy_price, ewy_pct = fetch_finnhub_quote("EWY")
+        if ewy_price is not None:
+            indices.append({
+                "name": "韓国(KOSPI代替:EWY)", "symbol": "EWY",
+                "price": ewy_price,
+                "chg": round(ewy_price * ewy_pct / 100, 2) if ewy_pct is not None else 0,
+                "pct": ewy_pct,
+            })
+
     # ---- heatmap ----
     heatmap = []
     breadth_up = 0
