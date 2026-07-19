@@ -153,8 +153,9 @@ def fetch_treasury_10y():
     return latest.get("year10"), latest.get("date")
 
 
-def fetch_alpaca_news(limit=5):
+def fetch_alpaca_news(limit=5, symbols=None):
     """Alpaca Market Data APIのNews(無料プラン含む)。
+    symbolsを指定すると、その銘柄に関連する記事に絞り込む。
     ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY が未設定、または
     サブスクリプションで許可されていない場合は空リストを返す。"""
     key_id = os.environ.get("ALPACA_API_KEY_ID")
@@ -162,10 +163,13 @@ def fetch_alpaca_news(limit=5):
     if not key_id or not secret:
         print("INFO: ALPACA_API_KEY_ID/SECRET未設定のためAlpacaニュースはスキップ", file=sys.stderr)
         return []
+    params = {"limit": limit, "sort": "desc"}
+    if symbols:
+        params["symbols"] = ",".join(symbols)
     try:
         r = requests.get(
             "https://data.alpaca.markets/v1beta1/news",
-            params={"limit": limit, "sort": "desc"},
+            params=params,
             headers={"APCA-API-KEY-ID": key_id, "APCA-API-SECRET-KEY": secret},
             timeout=20,
         )
@@ -192,7 +196,7 @@ def fetch_alpaca_news(limit=5):
     return items
 
 
-def fetch_yahoo_news(limit=5):
+def fetch_yahoo_news(limit=5, symbols=None):
     """yfinance(Yahoo Financeの非公式ラッパー)からニュースを取得。
     失敗しても例外は投げず、空リストを返す(呼び出し側でmoversにフォールバック)。"""
     try:
@@ -201,7 +205,7 @@ def fetch_yahoo_news(limit=5):
         print(f"WARN: yfinanceのimportに失敗: {e}", file=sys.stderr)
         return []
 
-    symbols_to_try = ["^GSPC", "AAPL", "MSFT", "NVDA"]
+    symbols_to_try = symbols if symbols else ["^GSPC", "AAPL", "MSFT", "NVDA"]
     seen_titles = set()
     items = []
     for sym in symbols_to_try:
@@ -291,11 +295,16 @@ def main():
         "losers": [{"t": h["t"], "pct": h["pct"]} for h in sorted_heatmap[-3:][::-1]],
     }
 
-    # ---- news: Alpaca(優先) → Yahoo Finance(次点) → 失敗時はmoversで代替表示 ----
-    news = fetch_alpaca_news(5)
-    news_source = "alpaca"
+    # ---- news: 値動き上位銘柄に関連するニュースを優先。
+    #      Alpaca(銘柄絞り込み) → Alpaca(一般) → Yahoo Finance → 失敗時はmoversで代替表示 ----
+    mover_symbols = [m["t"] for m in movers["gainers"]] + [m["t"] for m in movers["losers"]]
+    news = fetch_alpaca_news(5, symbols=mover_symbols)
+    news_source = "alpaca-movers"
     if not news:
-        news = fetch_yahoo_news(5)
+        news = fetch_alpaca_news(5)
+        news_source = "alpaca-general"
+    if not news:
+        news = fetch_yahoo_news(5, symbols=mover_symbols)
         news_source = "yahoo"
     if not news:
         news_source = "none"

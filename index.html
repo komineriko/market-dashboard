@@ -765,7 +765,7 @@ function renderCharts(){
         <div class="tk">${tk}</div>
         <button class="removeBtn" data-ticker="${tk}">✕</button>
       </div>
-      <iframe src="https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tk)}&interval=D&theme=dark&style=1&locale=ja&toolbarbg=161b26&hide_top_toolbar=0&hide_legend=0&save_image=0"
+      <iframe src="https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tk)}&interval=D&theme=dark&style=1&locale=ja&toolbarbg=161b26&hide_top_toolbar=0&hide_side_toolbar=0&hide_legend=0&save_image=0&allow_symbol_change=0"
               loading="lazy"></iframe>
     </div>
   `).join('');
