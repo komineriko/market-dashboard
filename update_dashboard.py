@@ -654,21 +654,22 @@ def main():
 
         def get_symbol_data(sym):
             if sym not in symbol_cache:
-                series = fetch_finnhub_candle(sym)
+                series = fetch_eod_series(sym, days=380)
                 stats = series_stats(series)
                 pe = fetch_finnhub_pe(sym)
-                symbol_cache[sym] = (stats, pe)
-            return symbol_cache[sym]
+                symbol_cache[sym] = (stats, pe, series)
+            return symbol_cache[sym][0], symbol_cache[sym][1]
 
-        # ベンチマーク: S&P500は^GSPCの1ヶ月リターン、NASDAQ100はQQQの1ヶ月リターン
-        gspc_series = fetch_finnhub_candle("SPY")
-        gspc_stats = series_stats(gspc_series)
-        qqq_series = fetch_finnhub_candle("QQQ")
-        qqq_stats = series_stats(qqq_series)
-        bench_ret = {
-            "sp500": gspc_stats["ret_1mo"] if gspc_stats and gspc_stats.get("ret_1mo") is not None else 0,
-            "nasdaq100": qqq_stats["ret_1mo"] if qqq_stats and qqq_stats.get("ret_1mo") is not None else 0,
-        }
+        def get_symbol_series(sym):
+            if sym not in symbol_cache:
+                get_symbol_data(sym)
+            return symbol_cache[sym][2] if sym in symbol_cache else []
+
+        # ベンチマーク: S&P500指数(^GSPC)の1ヶ月リターンを両ユニバース共通のベンチマークとして使用
+        # (QQQ/SPYはETFのためFMP/Finnhubとも過去データが無料プランで非対応)
+        gspc_bench_series = fetch_eod_series("^GSPC", days=90)
+        gspc_bench_stats = series_stats(gspc_bench_series)
+        bench_ret_1mo = gspc_bench_stats["ret_1mo"] if gspc_bench_stats and gspc_bench_stats.get("ret_1mo") is not None else 0
 
         for uni_key, symbols in (("sp500", SP500_TOP100), ("nasdaq100", NASDAQ100_FULL)):
             for sym in symbols:
@@ -678,7 +679,7 @@ def main():
                     continue
                 rs = None
                 if stats.get("ret_1mo") is not None:
-                    rs = round(stats["ret_1mo"] - bench_ret[uni_key], 2)
+                    rs = round(stats["ret_1mo"] - bench_ret_1mo, 2)
                 universes[uni_key].append({
                     "t": sym, "pct": stats["daily_pct"], "pe": pe, "rs": rs,
                 })
@@ -715,19 +716,28 @@ def main():
                 "newHigh": newhigh, "newLow": newlow,
             }
 
-        # ---- セクターローテーション(直近7営業日 vs その前7営業日、SPY相対) ----
-        spy_series = gspc_series
-        if spy_series and len(spy_series) >= 15:
-            spy_recent7 = spy_series[-1]["price"] / spy_series[-8]["price"] - 1
-            spy_prior7 = spy_series[-8]["price"] / spy_series[-15]["price"] - 1
-            for sym, name in SECTOR_ETF_SYMBOLS:
-                sec_series = fetch_finnhub_candle(sym, days_back=40)
-                if len(sec_series) < 15:
+        # ---- セクターローテーション(直近7営業日 vs その前7営業日、^GSPC相対) ----
+        # セクターETF自体の過去データは無料プランで非対応のため、
+        # SECTOR_STOCK_MAPの構成銘柄(既に取得済みのデータを再利用)で近似する。
+        if gspc_bench_series and len(gspc_bench_series) >= 15:
+            g = gspc_bench_series
+            bench_recent7 = g[-1]["price"] / g[-8]["price"] - 1
+            bench_prior7 = g[-8]["price"] / g[-15]["price"] - 1
+            for name, members in SECTOR_STOCK_MAP.items():
+                recent_vals, prior_vals = [], []
+                for m in members:
+                    get_symbol_data(m)  # キャッシュに乗せる(未取得なら取得)
+                    series = get_symbol_series(m)
+                    if len(series) < 15:
+                        continue
+                    recent_vals.append(series[-1]["price"] / series[-8]["price"] - 1)
+                    prior_vals.append(series[-8]["price"] / series[-15]["price"] - 1)
+                if not recent_vals:
                     continue
-                sec_recent7 = sec_series[-1]["price"] / sec_series[-8]["price"] - 1
-                sec_prior7 = sec_series[-8]["price"] / sec_series[-15]["price"] - 1
-                rel_recent = round((sec_recent7 - spy_recent7) * 100, 2)
-                rel_prior = round((sec_prior7 - spy_prior7) * 100, 2)
+                member_recent7 = sum(recent_vals) / len(recent_vals)
+                member_prior7 = sum(prior_vals) / len(prior_vals)
+                rel_recent = round((member_recent7 - bench_recent7) * 100, 2)
+                rel_prior = round((member_prior7 - bench_prior7) * 100, 2)
                 if rel_recent >= 0 and rel_recent >= rel_prior:
                     quadrant = "leading"
                 elif rel_recent >= 0 and rel_recent < rel_prior:
@@ -737,7 +747,7 @@ def main():
                 else:
                     quadrant = "lagging"
                 sector_rotation.append({
-                    "name": name, "ticker": sym,
+                    "name": name, "ticker": f"{len(recent_vals)}銘柄平均",
                     "recent": rel_recent, "prior": rel_prior, "quadrant": quadrant,
                 })
 
