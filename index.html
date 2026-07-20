@@ -126,6 +126,12 @@
   .misc-card .chg{font-size:11px;margin-top:3px;font-variant-numeric:tabular-nums;font-weight:600;}
 
   /* ヒートマップ */
+  .subtab-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .subtab{
+    background:var(--card);border:1px solid var(--card-border);color:var(--text-dim);
+    padding:7px 14px;border-radius:99px;font-size:12.5px;cursor:pointer;font-family:inherit;
+  }
+  .subtab.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:700;}
   .heatmap-grid{
     display:grid;
     grid-template-columns:repeat(10,1fr);
@@ -133,6 +139,9 @@
     gap:5px;
     grid-auto-flow:dense;
   }
+  .tile.tu{grid-column:span 1;grid-row:span 1;}
+  .tile.tu .tk{font-size:10.5px;}
+  .tile.tu .pc{font-size:9.5px;}
   .tile{
     border-radius:8px;
     padding:6px 8px;
@@ -268,8 +277,17 @@
         <div>モメンタム(S&P対50日線) <b id="sMomentum">--</b></div>
         <div>VIX成分 <b id="sVix">--</b></div>
       </div>
+      <div class="sentiment-sub" id="sentTrendRow">
+        <div>前日 <b id="tPrev">--</b></div>
+        <div>1週間前 <b id="tWeek">--</b></div>
+        <div>1ヶ月前 <b id="tMonth">--</b></div>
+        <div>1年前 <b id="tYear">--</b></div>
+      </div>
       <div class="sentiment-note">※ この指数は breadth・momentum・VIXから独自算出した簡易指標であり、CNN公式のFear&amp;Greed Indexとは別物です。</div>
     </div>
+
+    <div class="section-title">市場の広がり（S&P500上位100銘柄ベース）</div>
+    <div class="misc-grid" id="breadthGrid"></div>
 
     <div class="section-title">コモディティ・為替・金利</div>
     <div class="misc-grid" id="miscGrid"></div>
@@ -277,7 +295,17 @@
 
   <!-- 2. ヒートマップ -->
   <section class="tabpanel" id="tab-heatmap">
-    <div class="section-title">メガキャップ29銘柄（サイズ=時価総額 / 色=騰落率）</div>
+    <div class="subtab-row" id="heatmapUniverseTabs">
+      <button class="subtab active" data-universe="mega">メガキャップ29</button>
+      <button class="subtab" data-universe="sp500">S&P500(上位100)</button>
+      <button class="subtab" data-universe="nasdaq100">NASDAQ100</button>
+    </div>
+    <div class="subtab-row" id="heatmapMetricTabs" style="display:none;">
+      <button class="subtab active" data-metric="pct">前日比</button>
+      <button class="subtab" data-metric="pe">実績PER</button>
+      <button class="subtab" data-metric="rs">レラティブストレングス(1ヶ月)</button>
+    </div>
+    <div class="section-title" id="heatmapSectionTitle">メガキャップ29銘柄（サイズ=時価総額 / 色=騰落率）</div>
     <div class="heatmap-grid" id="heatmapGrid"></div>
   </section>
 
@@ -286,6 +314,12 @@
     <div class="section-title" id="sectorSectionTitle">セクター動向</div>
     <div class="sector-list" id="sectorList"></div>
     <div class="sentiment-note" style="margin-top:14px;" id="sectorNote"></div>
+
+    <div class="section-title" style="margin-top:26px;">セクターローテーション（直近7営業日 vs その前7営業日、SPY対比）</div>
+    <div id="rotationWrap">
+      <svg id="rotationChart" viewBox="0 0 340 340" style="width:100%;max-width:420px;display:block;margin:0 auto;"></svg>
+    </div>
+    <div class="sentiment-note" style="margin-top:10px;">※ 右上=主導（強い・加速中）／右下=改善（弱い→勢いが戻り始め）／左上=失速（強いが勢い低下）／左下=出遅れ（弱い・低迷）</div>
   </section>
 
   <!-- 4. ニュース -->
@@ -724,9 +758,10 @@ function pctClass(p){
   if(p===null||p===undefined) return "flat";
   return p>0?"up":(p<0?"down":"flat");
 }
-function heatColor(pct){
-  const clamped = Math.max(-5, Math.min(5, pct));
-  const ratio = Math.abs(clamped)/5;
+function heatColor(pct, range){
+  range = range || 5;
+  const clamped = Math.max(-range, Math.min(range, pct));
+  const ratio = Math.abs(clamped)/range;
   if(pct>=0){
     const l = 14 + ratio*10;
     return `hsl(154, 62%, ${l}%)`;
@@ -734,6 +769,14 @@ function heatColor(pct){
     const l = 14 + ratio*10;
     return `hsl(353, 62%, ${l}%)`;
   }
+}
+function peColor(pe){
+  if(pe===null || pe===undefined || pe<=0) return 'hsl(220, 10%, 20%)';
+  if(pe < 15) return 'hsl(154, 55%, 20%)';
+  if(pe < 22) return 'hsl(154, 45%, 15%)';
+  if(pe < 30) return 'hsl(45, 55%, 20%)';
+  if(pe < 45) return 'hsl(30, 60%, 22%)';
+  return 'hsl(353, 60%, 22%)';
 }
 
 function renderIndices(){
@@ -758,6 +801,36 @@ function renderSentiment(){
   document.getElementById('sBreadth').textContent = s.breadth + '%';
   document.getElementById('sMomentum').textContent = s.momentum;
   document.getElementById('sVix').textContent = s.vix;
+
+  const trend = DASHBOARD_DATA.sentimentTrend || {};
+  const setTrend = (id, v) => { document.getElementById(id).textContent = (v===null||v===undefined) ? 'ー' : v; };
+  setTrend('tPrev', trend.prevDay);
+  setTrend('tWeek', trend.weekAgo);
+  setTrend('tMonth', trend.monthAgo);
+  setTrend('tYear', trend.yearAgo);
+}
+
+function renderBreadth(){
+  const el = document.getElementById('breadthGrid');
+  const b = DASHBOARD_DATA.marketBreadth;
+  if(!b){
+    el.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">市場の広がりデータは現在利用できません（Finnhub未設定の可能性があります）</div>`;
+    return;
+  }
+  const items = [
+    {name:'値上がり銘柄数', value:`${b.advancers}/${b.total}`},
+    {name:'値下がり銘柄数', value:`${b.decliners}/${b.total}`},
+    {name:'50日線より上', value:`${b.pctAbove50}%`},
+    {name:'200日線より上', value: b.pctAbove200!==null ? `${b.pctAbove200}%` : 'ー'},
+    {name:'52週新高値', value:`${b.newHigh}銘柄`},
+    {name:'52週新安値', value:`${b.newLow}銘柄`},
+  ];
+  el.innerHTML = items.map(i=>`
+    <div class="misc-card">
+      <div class="name">${i.name}</div>
+      <div class="price">${i.value}</div>
+    </div>
+  `).join('');
 }
 
 function renderMisc(){
@@ -771,15 +844,77 @@ function renderMisc(){
   `).join('');
 }
 
+let heatmapUniverse = 'mega';
+let heatmapMetric = 'pct';
+
 function renderHeatmap(){
   const el = document.getElementById('heatmapGrid');
-  el.innerHTML = DASHBOARD_DATA.heatmap.map(h=>`
-    <div class="tile t${h.tier}" style="background:${heatColor(h.pct)}">
-      <div class="tk">${h.t}</div>
-      <div class="pc">${fmtPct(h.pct)}</div>
+  const titleEl = document.getElementById('heatmapSectionTitle');
+
+  if(heatmapUniverse === 'mega'){
+    titleEl.textContent = 'メガキャップ29銘柄（サイズ=時価総額 / 色=騰落率）';
+    el.className = 'heatmap-grid';
+    el.innerHTML = DASHBOARD_DATA.heatmap.map(h=>`
+      <div class="tile t${h.tier}" style="background:${heatColor(h.pct)}">
+        <div class="tk">${h.t}</div>
+        <div class="pc">${fmtPct(h.pct)}</div>
+      </div>
+    `).join('');
+    return;
+  }
+
+  const universeData = (DASHBOARD_DATA.universes && DASHBOARD_DATA.universes[heatmapUniverse]) || [];
+  const uniLabel = heatmapUniverse === 'sp500' ? 'S&P500(時価総額上位100)' : 'NASDAQ100';
+  if(!universeData.length){
+    titleEl.textContent = `${uniLabel}：データがありません`;
+    el.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Finnhubが未設定、または取得に失敗した可能性があります</div>`;
+    return;
+  }
+
+  let metricLabel, sorted, colorFn, valueFn;
+  if(heatmapMetric === 'pct'){
+    metricLabel = '前日比';
+    sorted = [...universeData].sort((a,b)=>b.pct-a.pct);
+    colorFn = d => heatColor(d.pct, 5);
+    valueFn = d => fmtPct(d.pct);
+  } else if(heatmapMetric === 'pe'){
+    metricLabel = '実績PER';
+    sorted = [...universeData].filter(d=>d.pe!==null).sort((a,b)=>a.pe-b.pe);
+    colorFn = d => peColor(d.pe);
+    valueFn = d => d.pe!==null ? `PE ${d.pe}` : '-';
+  } else {
+    metricLabel = 'レラティブストレングス(1ヶ月)';
+    sorted = [...universeData].filter(d=>d.rs!==null).sort((a,b)=>b.rs-a.rs);
+    colorFn = d => heatColor(d.rs, 15);
+    valueFn = d => fmtPct(d.rs);
+  }
+
+  titleEl.textContent = `${uniLabel} - ${metricLabel}（${sorted.length}銘柄）`;
+  el.className = 'heatmap-grid';
+  el.style.gridAutoRows = '46px';
+  el.innerHTML = sorted.map(d=>`
+    <div class="tile tu" style="background:${colorFn(d)}">
+      <div class="tk">${d.t}</div>
+      <div class="pc">${valueFn(d)}</div>
     </div>
   `).join('');
 }
+
+document.querySelectorAll('#heatmapUniverseTabs .subtab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    heatmapUniverse = btn.getAttribute('data-universe');
+    document.querySelectorAll('#heatmapUniverseTabs .subtab').forEach(b=>b.classList.toggle('active', b===btn));
+    document.getElementById('heatmapMetricTabs').style.display = heatmapUniverse === 'mega' ? 'none' : 'flex';
+    renderHeatmap();
+  });
+});
+document.querySelectorAll('#heatmapMetricTabs .subtab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    heatmapMetric = btn.getAttribute('data-metric');
+    document.querySelectorAll('#heatmapMetricTabs .subtab').forEach(b=>b.classList.toggle('active', b===btn));
+    renderHeatmap();
+  });
+});
 
 function renderSectors(){
   const el = document.getElementById('sectorList');
@@ -913,9 +1048,46 @@ document.addEventListener('keydown', (e)=>{
 document.getElementById('fetchedAtLabel').textContent = '取得日時: ' + DASHBOARD_DATA.fetchedAt;
 renderIndices();
 renderSentiment();
+renderBreadth();
 renderMisc();
 renderHeatmap();
+function renderRotation(){
+  const svg = document.getElementById('rotationChart');
+  const data = DASHBOARD_DATA.sectorRotation || [];
+  if(!data.length){
+    svg.innerHTML = `<text x="170" y="170" text-anchor="middle" fill="var(--text-faint)" font-size="12">データがありません（Finnhub未設定の可能性があります）</text>`;
+    return;
+  }
+  const W = 340, H = 340, PAD = 40;
+  const xs = data.map(d=>d.recent);
+  const ys = data.map(d=>d.recent - d.prior);
+  const maxAbs = Math.max(...xs.map(Math.abs), ...ys.map(Math.abs), 1) * 1.25;
+  const sx = v => W/2 + (v/maxAbs) * (W/2 - PAD);
+  const sy = v => H/2 - (v/maxAbs) * (H/2 - PAD);
+  const quadColor = {leading:'rgba(47,212,128,0.10)', weakening:'rgba(245,185,66,0.08)', improving:'rgba(77,141,255,0.08)', lagging:'rgba(255,93,108,0.08)'};
+  const dotColor = {leading:'var(--up)', weakening:'var(--warn)', improving:'var(--accent)', lagging:'var(--down)'};
+  let svgContent = '';
+  svgContent += `<rect x="${W/2}" y="0" width="${W/2}" height="${H/2}" fill="${quadColor.leading}"/>`;
+  svgContent += `<rect x="0" y="0" width="${W/2}" height="${H/2}" fill="${quadColor.weakening}"/>`;
+  svgContent += `<rect x="${W/2}" y="${H/2}" width="${W/2}" height="${H/2}" fill="${quadColor.improving}"/>`;
+  svgContent += `<rect x="0" y="${H/2}" width="${W/2}" height="${H/2}" fill="${quadColor.lagging}"/>`;
+  svgContent += `<line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="#232937" stroke-width="1"/>`;
+  svgContent += `<line x1="${W/2}" y1="0" x2="${W/2}" y2="${H}" stroke="#232937" stroke-width="1"/>`;
+  svgContent += `<text x="${W-6}" y="${H/2-8}" text-anchor="end" font-size="9" fill="var(--up)">主導</text>`;
+  svgContent += `<text x="6" y="${H/2-8}" font-size="9" fill="var(--warn)">失速</text>`;
+  svgContent += `<text x="${W-6}" y="${H/2+16}" text-anchor="end" font-size="9" fill="var(--accent)">改善</text>`;
+  svgContent += `<text x="6" y="${H/2+16}" font-size="9" fill="var(--down)">出遅れ</text>`;
+  data.forEach(d=>{
+    const cx = sx(d.recent), cy = sy(d.recent - d.prior);
+    const color = dotColor[d.quadrant] || 'var(--text-dim)';
+    svgContent += `<circle cx="${cx}" cy="${cy}" r="5" fill="${color}" stroke="var(--bg)" stroke-width="1.5"/>`;
+    svgContent += `<text x="${cx}" y="${cy-9}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}">${d.name}</text>`;
+  });
+  svg.innerHTML = svgContent;
+}
+
 renderSectors();
+renderRotation();
 renderNewsOrFallback();
 renderCharts();
 </script>

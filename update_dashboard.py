@@ -97,6 +97,36 @@ MARKET_CAP_HINTS_B = {
 }
 FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY")
 
+# S&P500 時価総額上位100銘柄(概算。細かい入れ替わりは許容し、取得失敗銘柄は自動でスキップされる)
+SP500_TOP100 = [
+    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","AVGO","TSLA","BRK-B","JPM",
+    "LLY","V","XOM","MA","COST","UNH","JNJ","HD","PG","NFLX",
+    "ABBV","BAC","CRM","ORCL","MRK","CVX","KO","PEP","WMT","ADBE",
+    "MCD","DIS","ABT","WFC","CSCO","TMO","ACN","LIN","DHR","VZ",
+    "NEE","PM","TXN","UNP","RTX","LOW","INTC","AMGN","IBM","SPGI",
+    "CAT","GE","HON","NKE","BA","AXP","GS","MS","BLK","SCHW",
+    "DE","ELV","SYK","MDT","LMT","BKNG","ADI","PLD","GILD","MMC",
+    "T","C","TJX","VRTX","CB","MO","SO","DUK","ADP","REGN",
+    "NOW","ZTS","BSX","CME","PGR","EOG","SLB","ETN","AON","ITW",
+    "EQIX","APD","CL","FDX","USB","PNC","MU","NSC","WM","ICE",
+]
+
+# NASDAQ-100 構成銘柄(概算。細かい入れ替わりは許容)
+NASDAQ100_FULL = [
+    "AAPL","MSFT","GOOGL","GOOG","AMZN","NVDA","META","TSLA","AVGO","COST",
+    "ASML","PEP","AZN","ADBE","NFLX","AMD","CSCO","TMUS","INTU","QCOM",
+    "TXN","CMCSA","AMAT","HON","BKNG","VRTX","ISRG","PANW","ADP","SBUX",
+    "MU","GILD","LRCX","MDLZ","REGN","ADI","PYPL","SNPS","KLAC","CDNS",
+    "MELI","CTAS","MAR","ORLY","CSX","ABNB","PDD","WDAY","CRWD","MRVL",
+    "DASH","FTNT","ROP","NXPI","MNST","PCAR","PAYX","ROST","ODFL","KDP",
+    "EA","FAST","VRSK","GEHC","IDXX","CPRT","DXCM","EXC","CTSH","XEL",
+    "BKR","KHC","TTD","ANSS","ON","CCEP","DDOG","TEAM","ZS","MCHP",
+    "GFS","ILMN","WBD","BIIB","CDW","LULU","SIRI","ENPH","ARM","APP",
+    "AXON","CEG","FANG","TTWO","WDC","GEN","DLTR","MDB","LCID","CSGP",
+]
+
+SENTIMENT_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentiment_history.json")
+
 
 
 def _get(path, params, retries=3):
@@ -317,6 +347,131 @@ def translate_news_items(items):
     return items
 
 
+def fetch_finnhub_candle(symbol, days_back=280, retries=3):
+    """Finnhub /stock/candle。日足の時系列を{date,close}のリスト(日付昇順)で返す。失敗時は[]。"""
+    if not FINNHUB_KEY:
+        return []
+    to_ts = int(time.time())
+    from_ts = to_ts - days_back * 86400
+    last_err = None
+    for attempt in range(retries):
+        try:
+            r = requests.get(
+                "https://finnhub.io/api/v1/stock/candle",
+                params={"symbol": symbol, "resolution": "D", "from": from_ts, "to": to_ts, "token": FINNHUB_KEY},
+                timeout=20,
+            )
+            time.sleep(0.15)
+            r.raise_for_status()
+            data = r.json()
+            if not isinstance(data, dict) or data.get("s") != "ok":
+                return []
+            closes = data.get("c", [])
+            times = data.get("t", [])
+            out = [{"date": datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d"), "price": float(c)}
+                   for t, c in zip(times, closes)]
+            out.sort(key=lambda x: x["date"])
+            return out
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            last_err = e
+            if status == 429 and attempt < retries - 1:
+                wait = 2 * (attempt + 1)
+                time.sleep(wait)
+                continue
+            print(f"WARN: Finnhub candle {symbol} 取得失敗: {e}", file=sys.stderr)
+            return []
+        except Exception as e:
+            print(f"WARN: Finnhub candle {symbol} 取得失敗: {e}", file=sys.stderr)
+            return []
+    return []
+
+
+def fetch_finnhub_pe(symbol, retries=2):
+    """Finnhub /stock/metric。実績PER(peBasicExclExtraTTM系)を返す。失敗時はNone。"""
+    if not FINNHUB_KEY:
+        return None
+    for attempt in range(retries):
+        try:
+            r = requests.get(
+                "https://finnhub.io/api/v1/stock/metric",
+                params={"symbol": symbol, "metric": "all", "token": FINNHUB_KEY},
+                timeout=20,
+            )
+            time.sleep(0.15)
+            r.raise_for_status()
+            data = r.json()
+            metric = data.get("metric", {}) if isinstance(data, dict) else {}
+            pe = metric.get("peBasicExclExtraTTM") or metric.get("peExclExtraTTM") or metric.get("peNormalizedAnnual")
+            return round(float(pe), 1) if pe is not None else None
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status == 429 and attempt < retries - 1:
+                time.sleep(2)
+                continue
+            print(f"WARN: Finnhub metric {symbol} 取得失敗: {e}", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"WARN: Finnhub metric {symbol} 取得失敗: {e}", file=sys.stderr)
+            return None
+    return None
+
+
+def series_stats(series):
+    """candleシリーズから 現在値・前日比%・1ヶ月リターン%・50日/200日移動平均・52週高安 を計算"""
+    if len(series) < 2:
+        return None
+    latest = series[-1]["price"]
+    prev = series[-2]["price"]
+    daily_pct = round((latest - prev) / prev * 100, 2) if prev else None
+    idx_1mo = max(0, len(series) - 22)
+    price_1mo_ago = series[idx_1mo]["price"]
+    ret_1mo = round((latest - price_1mo_ago) / price_1mo_ago * 100, 2) if price_1mo_ago else None
+    sma50 = sum(x["price"] for x in series[-50:]) / len(series[-50:])
+    sma200_window = series[-200:] if len(series) >= 200 else series
+    sma200 = sum(x["price"] for x in sma200_window) / len(sma200_window)
+    year_window = series[-252:] if len(series) >= 252 else series
+    high52 = max(x["price"] for x in year_window)
+    low52 = min(x["price"] for x in year_window)
+    return {
+        "latest": latest, "daily_pct": daily_pct, "ret_1mo": ret_1mo,
+        "sma50": sma50, "sma200": sma200, "high52": high52, "low52": low52,
+        "has200": len(series) >= 200,
+    }
+
+
+def load_sentiment_history():
+    try:
+        with open(SENTIMENT_HISTORY_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_sentiment_history(history):
+    try:
+        with open(SENTIMENT_HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(history[-400:], f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"WARN: sentiment_history.jsonの保存に失敗: {e}", file=sys.stderr)
+
+
+def lookup_history_score(history, days_ago, today):
+    target = today - timedelta(days=days_ago)
+    best = None
+    best_diff = None
+    for row in history:
+        try:
+            d = datetime.strptime(row["date"], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        diff = abs((d - target).days)
+        if diff <= 3 and (best_diff is None or diff < best_diff):
+            best = row["score"]
+            best_diff = diff
+    return best
+
+
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
@@ -475,17 +630,130 @@ def main():
 
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst)
+    today_date = now_jst.date()
     fetched_at = now_jst.strftime("%Y年%m月%d日 %H:%M JST 時点（FMP終値データ・自動更新）")
+
+    # ---- センチメント履歴(Fear&Greed風のトレンド表示用) ----
+    history = load_sentiment_history()
+    history.append({"date": today_date.isoformat(), "score": score})
+    save_sentiment_history(history)
+    sentiment_trend = {
+        "prevDay": lookup_history_score(history[:-1], 1, today_date),
+        "weekAgo": lookup_history_score(history[:-1], 7, today_date),
+        "monthAgo": lookup_history_score(history[:-1], 30, today_date),
+        "yearAgo": lookup_history_score(history[:-1], 365, today_date),
+    }
+
+    # ---- S&P500 / NASDAQ100 ユニバース(前日比・実績PER・レラティブストレングス) ----
+    universes = {"sp500": [], "nasdaq100": []}
+    market_breadth = None
+    sector_rotation = []
+
+    if FINNHUB_KEY:
+        symbol_cache = {}
+
+        def get_symbol_data(sym):
+            if sym not in symbol_cache:
+                series = fetch_finnhub_candle(sym)
+                stats = series_stats(series)
+                pe = fetch_finnhub_pe(sym)
+                symbol_cache[sym] = (stats, pe)
+            return symbol_cache[sym]
+
+        # ベンチマーク: S&P500は^GSPCの1ヶ月リターン、NASDAQ100はQQQの1ヶ月リターン
+        gspc_series = fetch_finnhub_candle("SPY")
+        gspc_stats = series_stats(gspc_series)
+        qqq_series = fetch_finnhub_candle("QQQ")
+        qqq_stats = series_stats(qqq_series)
+        bench_ret = {
+            "sp500": gspc_stats["ret_1mo"] if gspc_stats and gspc_stats.get("ret_1mo") is not None else 0,
+            "nasdaq100": qqq_stats["ret_1mo"] if qqq_stats and qqq_stats.get("ret_1mo") is not None else 0,
+        }
+
+        for uni_key, symbols in (("sp500", SP500_TOP100), ("nasdaq100", NASDAQ100_FULL)):
+            for sym in symbols:
+                stats, pe = get_symbol_data(sym)
+                if not stats or stats.get("daily_pct") is None:
+                    print(f"WARN: {sym}({uni_key}) のデータが取得できませんでした（スキップ）", file=sys.stderr)
+                    continue
+                rs = None
+                if stats.get("ret_1mo") is not None:
+                    rs = round(stats["ret_1mo"] - bench_ret[uni_key], 2)
+                universes[uni_key].append({
+                    "t": sym, "pct": stats["daily_pct"], "pe": pe, "rs": rs,
+                })
+
+        # ---- 市場の広がり(S&P500上位100銘柄ベース) ----
+        above50 = above200 = newhigh = newlow = advancers = decliners = counted200 = 0
+        total = 0
+        for sym in SP500_TOP100:
+            stats, _ = get_symbol_data(sym)
+            if not stats:
+                continue
+            total += 1
+            if stats["daily_pct"] is not None:
+                if stats["daily_pct"] > 0:
+                    advancers += 1
+                elif stats["daily_pct"] < 0:
+                    decliners += 1
+            if stats["latest"] > stats["sma50"]:
+                above50 += 1
+            if stats.get("has200"):
+                counted200 += 1
+                if stats["latest"] > stats["sma200"]:
+                    above200 += 1
+            if stats["latest"] >= stats["high52"] * 0.999:
+                newhigh += 1
+            if stats["latest"] <= stats["low52"] * 1.001:
+                newlow += 1
+        if total > 0:
+            market_breadth = {
+                "total": total,
+                "advancers": advancers, "decliners": decliners,
+                "pctAbove50": round(above50 / total * 100, 1),
+                "pctAbove200": round(above200 / counted200 * 100, 1) if counted200 else None,
+                "newHigh": newhigh, "newLow": newlow,
+            }
+
+        # ---- セクターローテーション(直近7営業日 vs その前7営業日、SPY相対) ----
+        spy_series = gspc_series
+        if spy_series and len(spy_series) >= 15:
+            spy_recent7 = spy_series[-1]["price"] / spy_series[-8]["price"] - 1
+            spy_prior7 = spy_series[-8]["price"] / spy_series[-15]["price"] - 1
+            for sym, name in SECTOR_ETF_SYMBOLS:
+                sec_series = fetch_finnhub_candle(sym, days_back=40)
+                if len(sec_series) < 15:
+                    continue
+                sec_recent7 = sec_series[-1]["price"] / sec_series[-8]["price"] - 1
+                sec_prior7 = sec_series[-8]["price"] / sec_series[-15]["price"] - 1
+                rel_recent = round((sec_recent7 - spy_recent7) * 100, 2)
+                rel_prior = round((sec_prior7 - spy_prior7) * 100, 2)
+                if rel_recent >= 0 and rel_recent >= rel_prior:
+                    quadrant = "leading"
+                elif rel_recent >= 0 and rel_recent < rel_prior:
+                    quadrant = "weakening"
+                elif rel_recent < 0 and rel_recent >= rel_prior:
+                    quadrant = "improving"
+                else:
+                    quadrant = "lagging"
+                sector_rotation.append({
+                    "name": name, "ticker": sym,
+                    "recent": rel_recent, "prior": rel_prior, "quadrant": quadrant,
+                })
 
     data = {
         "fetchedAt": fetched_at,
         "indices": indices,
         "misc": misc,
         "sentiment": {"score": score, "breadth": breadth, "momentum": momentum, "vix": vix_component, "label": label},
+        "sentimentTrend": sentiment_trend,
         "sectors": sectors,
         "heatmap": heatmap,
         "movers": movers,
         "news": news,
+        "universes": universes,
+        "marketBreadth": market_breadth,
+        "sectorRotation": sector_rotation,
     }
 
     js_block = (

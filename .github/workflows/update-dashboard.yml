@@ -40,8 +40,8 @@ jobs:
         run: |
           git config user.name "market-dashboard-bot"
           git config user.email "actions@users.noreply.github.com"
-          if ! git diff --quiet -- index.html; then
-            git add index.html
+          if ! git diff --quiet -- index.html sentiment_history.json || [ -n "$(git status --porcelain sentiment_history.json)" ]; then
+            git add index.html sentiment_history.json
             git commit -m "chore: 自動更新 $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           else
