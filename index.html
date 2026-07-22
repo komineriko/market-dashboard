@@ -209,7 +209,7 @@
     background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;line-height:1;
   }
   .chart-box .chead button:hover{color:var(--down);}
-  .chart-box iframe{width:100%;height:680px;border:none;display:block;}
+  .chart-box .tvbox{width:100%;height:680px;}
   .empty-state{
     text-align:center;color:var(--text-faint);font-size:13px;padding:60px 20px;
     border:1px dashed var(--card-border);border-radius:10px;
@@ -245,7 +245,7 @@
     .tile.t1 .tk{font-size:15px;}
     .sector-row .sname{flex-basis:100px;font-size:12px;}
     .sector-row .sticker{display:none;}
-    .chart-box iframe{height:480px;}
+    .chart-box .tvbox{height:480px;}
     .app{padding:16px 10px 96px;}
   }
 </style>
@@ -354,6 +354,7 @@
   <button data-tab="chart"><span class="ic">📈</span><span class="lb">チャート</span></button>
 </nav>
 
+<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 <script>
 /* =========================================================
    データ（取得日時時点のスナップショット。自動更新タスクでは
@@ -1205,8 +1206,7 @@ function renderCharts(){
         <div class="tk">${tk}</div>
         <button class="removeBtn" data-ticker="${tk}">✕</button>
       </div>
-      <iframe src="https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tk)}&interval=D&theme=dark&style=1&locale=ja&toolbarbg=161b26&hide_top_toolbar=0&hide_side_toolbar=0&hide_legend=0&save_image=0&allow_symbol_change=0&studies=${encodeURIComponent(JSON.stringify(["MACD@tv-basicstudies","RSI@tv-basicstudies"]))}"
-              loading="lazy"></iframe>
+      <div id="tvwidget_${tk.replace(/[^A-Za-z0-9]/g,'_')}" class="tvbox"></div>
     </div>
   `).join('');
   el.querySelectorAll('.removeBtn').forEach(btn=>{
@@ -1215,6 +1215,31 @@ function renderCharts(){
       const newList = loadChartTickers().filter(x=>x!==tk);
       saveChartTickers(newList);
       renderCharts();
+    });
+  });
+  list.forEach(tk=>{
+    const containerId = 'tvwidget_' + tk.replace(/[^A-Za-z0-9]/g,'_');
+    if(typeof TradingView === 'undefined' || !TradingView.widget){
+      const c = document.getElementById(containerId);
+      if(c) c.innerHTML = '<div class="empty-state">チャートの読み込みに失敗しました（TradingViewライブラリ未読込）</div>';
+      return;
+    }
+    new TradingView.widget({
+      autosize: true,
+      symbol: tk,
+      interval: "D",
+      timezone: "Asia/Tokyo",
+      theme: "dark",
+      style: "1",
+      locale: "ja",
+      toolbar_bg: "#161b26",
+      enable_publishing: false,
+      hide_top_toolbar: false,
+      hide_side_toolbar: false,
+      allow_symbol_change: false,
+      save_image: false,
+      studies: ["MACD@tv-basicstudies", "RSI@tv-basicstudies"],
+      container_id: containerId,
     });
   });
 }
