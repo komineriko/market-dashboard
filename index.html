@@ -1239,6 +1239,12 @@ function renderCharts(){
       allow_symbol_change: false,
       save_image: false,
       studies: ["MACD@tv-basicstudies", "RSI@tv-basicstudies"],
+      studies_overrides: {
+        "MACD.histogram.color.0": "#ff5d6c",
+        "MACD.histogram.color.1": "#ff5d6c",
+        "MACD.histogram.color.2": "#2fd480",
+        "MACD.histogram.color.3": "#2fd480"
+      },
       container_id: containerId,
     });
   });
