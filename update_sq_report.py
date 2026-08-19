@@ -231,12 +231,17 @@ def main(argv=None) -> int:
         chains = src.chains
         origin = src.origin
         sources.append(origin)
+        sources.extend(src.notes)
         if base is None:
             base = src.as_of or date.today()
 
-        spot = sf.fetch_nikkei_spot()
+        # 板と同じ営業日の現物を取る。日付がずれると前日比が食い違う。
+        spot = sf.fetch_nikkei_spot(as_of=base)
         if spot.ok:
-            sources.append(f"日経平均: {spot.source}")
+            sources.append(f"日経平均: {spot.source}（{spot.as_of}）")
+            if spot.as_of and spot.as_of != base.isoformat():
+                print(f"WARN: 現物の日付 {spot.as_of} が板の日付 {base} と一致しません。",
+                      file=sys.stderr)
         else:
             print("WARN: 日経平均の終値を取得できませんでした。", file=sys.stderr)
         vi, vi_source = sf.fetch_nikkei_vi()

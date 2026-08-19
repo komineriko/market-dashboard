@@ -13,9 +13,14 @@ JPXが公表する日次相場情報から、行使価格ごとの建玉・清�
   * 取得できなかった項目は例外にせず None を返し、レポート側で
     「データ品質の開示」として明示する。元レポートと同じ運用にする。
 
+データの所在（2026-08 に実地調査した結果）:
+  * 行使価格別の建玉は、日次では大阪取引所日報のPDF（siop_dyr_*.pdf）にしか無い。
+    建玉残高のExcelは日次公開ではなく、日次相場情報のページにはファイルが置かれていない。
+  * 清算値段・IV・原資産価格・金利・残日数は rbYYYYMMDD.csv で取れる。
+  * 日報は当日中に公開されないことがあるため、公開済みの最新営業日を採用する。
+
 取得元を差し替えたい場合:
   SQ_CHAIN_FILE=path/to/225OP.xlsx   手元のオプション板ファイルを直接読む
-  SQ_JPX_DAILY_URL=https://...       日次相場情報ファイルのURLを直接指定
   SQ_NIKKEI_VI=33.6                  日経VI（自動取得できない場合の手入力）
 """
 
@@ -345,22 +350,41 @@ class SpotQuote:
         return self.close is not None
 
 
-def fetch_nikkei_spot() -> SpotQuote:
-    """日経平均の四本値。yfinance を第一候補、Stooq をフォールバックにする。"""
-    q = _spot_from_yfinance()
+def fetch_nikkei_spot(as_of: Optional[date] = None) -> SpotQuote:
+    """
+    日経平均の四本値。yfinance を第一候補、Stooq をフォールバックにする。
+
+    as_of を渡すとその営業日の値を返す。板データが1営業日遅れで公開されるため、
+    指定しないと板と現物で日付がずれて前日比が食い違う。
+    """
+    q = _spot_from_yfinance(as_of)
     if q.ok:
         return q
-    return _spot_from_stooq()
+    return _spot_from_stooq(as_of)
 
 
-def _spot_from_yfinance() -> SpotQuote:
+def _pick_index(dates: Sequence, as_of: Optional[date]) -> int:
+    """as_of に一致する行を返す。無ければ最後の行。"""
+    if as_of is None:
+        return len(dates) - 1
+    for i in range(len(dates) - 1, -1, -1):
+        if dates[i] == as_of:
+            return i
+    return len(dates) - 1
+
+
+def _spot_from_yfinance(as_of: Optional[date] = None) -> SpotQuote:
     try:
         import yfinance as yf
-        hist = yf.Ticker("^N225").history(period="10d", auto_adjust=False)
+        hist = yf.Ticker("^N225").history(period="1mo", auto_adjust=False)
         if hist is None or hist.empty:
             return SpotQuote()
-        last = hist.iloc[-1]
-        prev = hist.iloc[-2] if len(hist) >= 2 else None
+        days = [d.date() for d in hist.index]
+        i = _pick_index(days, as_of)
+        if i <= 0:
+            return SpotQuote()
+        last = hist.iloc[i]
+        prev = hist.iloc[i - 1]
         close = float(last["Close"])
         prev_close = float(prev["Close"]) if prev is not None else None
         return SpotQuote(
@@ -368,18 +392,22 @@ def _spot_from_yfinance() -> SpotQuote:
             change=(close - prev_close) if prev_close else None,
             change_pct=((close / prev_close - 1) * 100) if prev_close else None,
             open=float(last["Open"]), high=float(last["High"]), low=float(last["Low"]),
-            as_of=str(hist.index[-1].date()), source="yfinance ^N225")
+            as_of=str(days[i]), source="yfinance ^N225")
     except Exception:      # noqa: BLE001 - 取得できなければフォールバックへ
         return SpotQuote()
 
 
-def _spot_from_stooq() -> SpotQuote:
+def _spot_from_stooq(as_of: Optional[date] = None) -> SpotQuote:
     try:
         raw = http_get("https://stooq.com/q/d/l/?s=^nkx&i=d")
         rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8", errors="replace"))))
         if len(rows) < 2:
             return SpotQuote()
-        last, prev = rows[-1], rows[-2]
+        days = [datetime.strptime(r["Date"], "%Y-%m-%d").date() for r in rows]
+        i = _pick_index(days, as_of)
+        if i <= 0:
+            return SpotQuote()
+        last, prev = rows[i], rows[i - 1]
         close, prev_close = float(last["Close"]), float(prev["Close"])
         return SpotQuote(
             close=close, prev_close=prev_close, change=close - prev_close,
@@ -550,6 +578,28 @@ class ChainSource:
     origin: str
     as_of: Optional[date] = None
     notes: List[str] = field(default_factory=list)
+    meta: Dict[str, "MonthMeta"] = field(default_factory=dict)
+
+
+def _merge_settlement_prices(chains: Dict[str, sa.Chain],
+                             priced: Dict[str, sa.Chain]) -> int:
+    """日報PDFで清算価格が取れなかった行を、清算値段CSVの値で埋める。"""
+    filled = 0
+    for month, ch in chains.items():
+        src = priced.get(month)
+        if not src:
+            continue
+        for strike, row in ch.rows.items():
+            other = src.rows.get(strike)
+            if not other:
+                continue
+            if row.call_price is None and other.call_price is not None:
+                row.call_price = other.call_price
+                filled += 1
+            if row.put_price is None and other.put_price is not None:
+                row.put_price = other.put_price
+                filled += 1
+    return filled
 
 
 def load_chains(months: Optional[Sequence[str]] = None,
@@ -557,7 +607,11 @@ def load_chains(months: Optional[Sequence[str]] = None,
     """
     オプション板を入手する。優先順位:
       1. SQ_CHAIN_FILE（手元のファイル。カンマ区切りで複数指定可）
-      2. JPX 日次相場情報
+      2. 大阪取引所日報 siop_dyr PDF（行使価格別の建玉と清算価格）
+         ＋ 同じ営業日の清算値段CSV（原資産価格・金利・残日数の補完）
+
+    行使価格別の建玉は日次では日報PDFにしか無いため、日報を主ソースとする。
+    日報は当日中に公開されないことがあるので、公開済みの最新営業日を採用する。
     """
     local = os.environ.get("SQ_CHAIN_FILE")
     if local:
@@ -578,11 +632,26 @@ def load_chains(months: Optional[Sequence[str]] = None,
         return ChainSource(chains=chains, origin="手元ファイル: " + ", ".join(names),
                            as_of=target)
 
-    d, url = latest_daily_file_url(target)
-    raw = http_get(url)
-    chains = parse_chains_any(raw, url.rsplit("/", 1)[-1], months)
-    return ChainSource(chains=chains, origin=f"JPX 日次相場情報 {url.rsplit('/', 1)[-1]}",
-                       as_of=d)
+    d, chains, pdf_name = fetch_daily_report_chains(target, months)
+    notes = [f"建玉・清算価格: 大阪取引所日報 {pdf_name}"]
+
+    # 同じ営業日の清算値段CSVで、原資産価格・金利・残日数を補い、価格の欠けも埋める
+    meta: Dict[str, MonthMeta] = {}
+    try:
+        page = http_get(JPX_SETTLEMENT_PAGE).decode("utf-8", errors="replace")
+        url = next((u for dd, u in discover_settlement_files(page) if dd == d), None)
+        if url:
+            priced, meta = parse_settlement_csv(http_get(url), months)
+            filled = _merge_settlement_prices(chains, priced)
+            notes.append(f"原資産価格・金利: 清算値段 {url.rsplit('/', 1)[-1]}"
+                         + (f"（価格の欠け {filled} 件を補完）" if filled else ""))
+        else:
+            notes.append(f"⚠ {d} の清算値段CSVが見つからず、原資産価格・金利は未取得")
+    except FetchError as exc:
+        notes.append(f"⚠ 清算値段CSVを取得できず補完なし: {exc}")
+
+    return ChainSource(chains=chains, origin=f"JPX 大阪取引所日報 {d.isoformat()}",
+                       as_of=d, notes=notes, meta=meta)
 
 
 # ---------------------------------------------------------------------------
@@ -688,3 +757,180 @@ def parse_settlement_csv(raw: bytes, months: Optional[Sequence[str]] = None
             "清算値段CSVから日経225オプションの標準限月を抽出できませんでした"
             f"（該当形式の銘柄 {seen_series} 件）。")
     return chains, meta
+
+
+# ---------------------------------------------------------------------------
+# 大阪取引所日報（株価指数オプション）siop_dyr_YYYYMMDD.pdf
+# ---------------------------------------------------------------------------
+#
+# 行使価格別の建玉残高は、日次ではこのPDFにしか無い（2026-08 時点で確認）。
+# 1行の形は次のとおりで、右端が建玉残高:
+#
+#   202609 09.10 31,000 131091018 … … … … 3.0000 4.0000 3.0000 4.0000 + 2.0000 23 76,000 4.00 … 242
+#   限月   最終日 行使価格 コード  ←夜間4本値→  ←日中4本値→        前日比  出来高 代金  清算値 権利行使 建玉
+#
+# 前日比は符号が別トークンになったり「…」になったりして列数が動く。
+# そこで中間列は解釈せず、左から4つ・右から3つだけを読む。
+#
+# CALL/PUT はページ内の「プットオプション」「コールオプション」の見出しで切り替わり、
+# 見出しはページをまたいで効き続けるので、読み順に状態を持ち越す。
+
+DAILY_REPORT_JSON = "/automation/markets/statistics-derivatives/daily/json/daily_report_{month}.json"
+DAILY_REPORT_ZIP = ("/automation/markets/statistics-derivatives/daily/files/"
+                    "{month}/Daily_Report_OSE_{date}.zip")
+
+SIOP_LINE_RE = re.compile(
+    r"^(\d{6})\s+(\d{1,2}\.\d{2})\s+([\d,]+)\s+(\d{6,12})\s+(.+)$")
+MISSING_TOKENS = {"…", "...", "-", "―", "‐"}
+
+CALL_MARKERS = ("コールオプション", "CallOptions", "Call Options")
+PUT_MARKERS = ("プットオプション", "PutOptions", "Put Options")
+
+# 商品の判定は「行頭が商品名のタイトル行」で行う。
+# ページ冒頭の注記
+#   ※日経225オプション、日経225ミニオプションの場合、表示単位「Ｐ」は「円」に置き換え
+# には両方の商品名が出てくるので、単なる部分一致で判定すると本体ページごと落ちる。
+# タイトル行は各ページに繰り返されるため、ページごとに状態を初期化して拾い直す。
+NIKKEI225_OPTION_TITLE = "日経225オプション"
+
+
+def _siop_number(token: str) -> Optional[float]:
+    if token in MISSING_TOKENS:
+        return None
+    return _num(token)
+
+
+def parse_siop_pages(pages: Iterable[str],
+                     months: Optional[Sequence[str]] = None) -> Dict[str, sa.Chain]:
+    """
+    日報（株価指数オプション）のページテキストから、日経225オプションの
+    行使価格別 建玉残高・清算価格を取り出す。PDFに依存しないのでテストしやすい。
+    """
+    chains: Dict[str, sa.Chain] = {}
+    is_call: Optional[bool] = None   # PUT/CALL の見出しはページをまたいで効き続ける
+
+    for text in pages:
+        if not text:
+            continue
+        # 商品はページごとに判定し直す。タイトル行が無いページは対象外として扱う。
+        in_nikkei225 = any(line.strip().startswith(NIKKEI225_OPTION_TITLE)
+                           for line in text.splitlines())
+
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if any(m in line for m in CALL_MARKERS):
+                is_call = True
+            elif any(m in line for m in PUT_MARKERS):
+                is_call = False
+            if not in_nikkei225 or is_call is None:
+                continue
+
+            m = SIOP_LINE_RE.match(line)
+            if not m:
+                continue
+            month = _normalise_month(m.group(1))
+            strike = _num(m.group(3))
+            if month is None or not strike or strike <= 0:
+                continue
+            if months and month not in months:
+                continue
+
+            tail = m.group(5).split()
+            if len(tail) < 3:
+                continue
+            oi = _siop_number(tail[-1])
+            settle = _siop_number(tail[-3])
+            if oi is None and settle is None:
+                continue
+
+            chain = chains.setdefault(month, sa.Chain(contract_month=month))
+            row = chain.rows.get(strike) or sa.StrikeRow(strike=strike)
+            if is_call:
+                row.call_oi = int(oi or 0)
+                if settle is not None:
+                    row.call_price = settle
+            else:
+                row.put_oi = int(oi or 0)
+                if settle is not None:
+                    row.put_price = settle
+            chain.add(row)
+
+    return chains
+
+
+def parse_siop_pdf(pdf_bytes: bytes,
+                   months: Optional[Sequence[str]] = None) -> Dict[str, sa.Chain]:
+    try:
+        import pdfplumber
+    except ImportError as exc:
+        raise FetchError("日報PDFを読むには pdfplumber が必要です。") from exc
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        pages = [p.extract_text() or "" for p in pdf.pages]
+    chains = parse_siop_pages(pages, months)
+    if not chains:
+        raise FetchError(
+            f"日報PDF（{len(pages)}ページ）から日経225オプションの建玉を抽出できませんでした。")
+    return chains
+
+
+def daily_report_url(trade_date: date) -> str:
+    return JPX_BASE + DAILY_REPORT_ZIP.format(
+        month=trade_date.strftime("%Y%m"), date=trade_date.strftime("%Y%m%d"))
+
+
+def latest_daily_report(target: Optional[date] = None,
+                        lookback_months: int = 2) -> Tuple[date, str]:
+    """
+    日報が公開されている最新の営業日を、月次JSONから調べる。
+    日報は当日中に出ないことがあるため、公開済みの最新日を採用する。
+    """
+    import json as _json
+    months: List[str] = []
+    base = target or date.today()
+    for i in range(lookback_months):
+        y, m = base.year, base.month - i
+        while m <= 0:
+            y, m = y - 1, m + 12
+        months.append(f"{y}{m:02d}")
+
+    for month in months:
+        try:
+            raw = http_get(JPX_BASE + DAILY_REPORT_JSON.format(month=month), retries=2)
+            data = _json.loads(raw.decode("utf-8", errors="replace"))
+        except (FetchError, ValueError):
+            continue
+        entries = []
+        for row in data.get("TableDatas", []):
+            td = str(row.get("TradeDate") or "")
+            if len(td) != 8 or not td.isdigit():
+                continue
+            try:
+                d = datetime.strptime(td, "%Y%m%d").date()
+            except ValueError:
+                continue
+            path = row.get("OseAll")
+            if path:
+                entries.append((d, JPX_BASE + path if path.startswith("/") else path))
+        entries.sort(key=lambda x: x[0], reverse=True)
+        if target:
+            for d, url in entries:
+                if d == target:
+                    return d, url
+        elif entries:
+            return entries[0]
+    raise FetchError("日報（Daily_Report_OSE）の公開一覧を取得できませんでした。")
+
+
+def fetch_daily_report_chains(target: Optional[date] = None,
+                              months: Optional[Sequence[str]] = None
+                              ) -> Tuple[date, Dict[str, sa.Chain], str]:
+    """日報ZIPを取得し、株価指数オプションのPDFから板を組み立てる。"""
+    d, url = latest_daily_report(target)
+    raw = http_get(url)
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        name = next((n for n in zf.namelist()
+                     if n.startswith("siop_dyr_") and "flex" not in n), None)
+        if not name:
+            raise FetchError(f"日報ZIPに株価指数オプションのPDFがありません: {zf.namelist()}")
+        pdf_bytes = zf.read(name)
+    return d, parse_siop_pdf(pdf_bytes, months), name

@@ -290,6 +290,112 @@ class TestSettlementCsv(unittest.TestCase):
         self.assertEqual(len(files), 2)
 
 
+# 実際の siop_dyr PDF から抽出されたテキストの形に合わせたページ
+SIOP_HEADER = [
+    "※日経225オプション、日経225ミニオプションの場合、表示単位「Ｐ」は「円」に置き換え",
+    "日経225オプション ※PriceforNikkei225Options,Nikkei225miniOptions:JPY,Others:points",
+    "Nikkei225Options",
+    "競争売買市場 AuctionMarket 2026年8月18日(火曜日)",
+    "取引成立銘柄 TradeExecutedIssues Tuesday,August18,2026",
+    "yyyymm mm.dd Ｐ Ｐ Ｐ Ｐ Ｐ Ｐ Ｐ Ｐ Ｐ ＰUnit 単位 ￥ 円 ＰUnit 単位 Unit 単位",
+]
+
+SIOP_PUT_PAGE = "\n".join(SIOP_HEADER + [
+    "プットオプション PutOptions",
+    # 前日比に符号が付き、トークン数が1つ増える行
+    "202609 09.10 67,000 131091018 … … … … 1800.0000 1900.0000 1750.0000 1870.0000 + 70.0000 410 76,000 1870.00 … 2,816",
+    # 中間がすべて「…」で列数が最小になる行
+    "202609 09.10 60,000 181091518 … … … … … … … … … … … 340.00 … 9,531",
+    # 建玉が「…」の行（清算値だけある）
+    "202609 09.10 39,000 181091918 … … … … … … … … … … … 5.00 … …",
+])
+
+SIOP_PUT_PAGE2 = "\n".join(SIOP_HEADER + [
+    # 見出しが無い継続ページ。PUTの状態が持ち越されること
+    "202609 09.10 66,000 131093018 … … … … 1450.0000 1500.0000 1440.0000 1495.0000 + 45.0000 30 5,000 1495.00 … 2,407",
+    "202610 10.09 66,000 131093019 … … … … … … … … … … … 2100.00 … 900",
+])
+
+SIOP_CALL_PAGE = "\n".join(SIOP_HEADER + [
+    "コールオプション CallOptions",
+    "202609 09.10 70,000 131094018 … … … … 900.0000 910.0000 890.0000 905.0000 + 5.0000 120 1,000 905.00 … 3,523",
+])
+
+# 日経225ミニオプションのページ（タイトル行が別なので取り込まれてはいけない）
+SIOP_MINI_PAGE = "\n".join([
+    "※日経225オプション、日経225ミニオプションの場合、表示単位「Ｐ」は「円」に置き換え",
+    "日経225ミニオプション ※PriceforNikkei225Options,Nikkei225miniOptions:JPY,Others:points",
+    "Nikkei225miniOptions",
+    "コールオプション CallOptions",
+    "202609 09.10 67,000 999999018 … … … … … … … … … … … 1180.00 … 5,000",
+])
+
+
+class TestSiopDailyReport(unittest.TestCase):
+    """大阪取引所日報（株価指数オプション）から行使価格別の建玉を取り出す。"""
+
+    def parse(self, pages, months=None):
+        return sf.parse_siop_pages(pages, months)
+
+    def test_extracts_open_interest_from_last_column(self):
+        chains = self.parse([SIOP_PUT_PAGE])
+        r = chains["26-09"].rows[67000.0]
+        self.assertEqual(r.put_oi, 2816)
+        self.assertEqual(r.put_price, 1870.0)
+
+    def test_handles_variable_column_count(self):
+        """前日比の符号でトークン数が変わっても右端から読めていること。"""
+        chains = self.parse([SIOP_PUT_PAGE])
+        self.assertEqual(chains["26-09"].rows[60000.0].put_oi, 9531)
+        self.assertEqual(chains["26-09"].rows[60000.0].put_price, 340.0)
+
+    def test_missing_open_interest_is_zero_but_price_kept(self):
+        chains = self.parse([SIOP_PUT_PAGE])
+        r = chains["26-09"].rows[39000.0]
+        self.assertEqual(r.put_oi, 0)
+        self.assertEqual(r.put_price, 5.0)
+
+    def test_put_state_carries_across_pages(self):
+        chains = self.parse([SIOP_PUT_PAGE, SIOP_PUT_PAGE2])
+        self.assertEqual(chains["26-09"].rows[66000.0].put_oi, 2407)
+        self.assertEqual(chains["26-09"].rows[66000.0].call_oi, 0)
+        self.assertIn("26-10", chains)
+        self.assertEqual(chains["26-10"].rows[66000.0].put_oi, 900)
+
+    def test_call_section_switches_side(self):
+        chains = self.parse([SIOP_PUT_PAGE, SIOP_CALL_PAGE])
+        r = chains["26-09"].rows[70000.0]
+        self.assertEqual(r.call_oi, 3523)
+        self.assertEqual(r.call_price, 905.0)
+        self.assertEqual(r.put_oi, 0)
+
+    def test_mini_options_are_excluded(self):
+        """注記行に「日経225ミニオプション」が出るため、行頭判定が効いていること。"""
+        chains = self.parse([SIOP_PUT_PAGE, SIOP_MINI_PAGE])
+        # ミニの 67,000 CALL 5,000枚 を取り込んでいないこと
+        self.assertEqual(chains["26-09"].rows[67000.0].call_oi, 0)
+
+    def test_nikkei_page_is_not_dropped_by_the_disclaimer(self):
+        """注記行の存在だけで本体ページが落ちていないこと（実際に踏んだ不具合）。"""
+        chains = self.parse([SIOP_PUT_PAGE])
+        self.assertTrue(chains, "日経225オプションのページが除外されてしまっている")
+
+    def test_month_filter(self):
+        chains = self.parse([SIOP_PUT_PAGE, SIOP_PUT_PAGE2], months=["26-09"])
+        self.assertEqual(list(chains), ["26-09"])
+
+    def test_header_lines_are_not_parsed_as_data(self):
+        chains = self.parse([SIOP_PUT_PAGE])
+        # 「yyyymm mm.dd …」のヘッダ行が行使価格として入っていないこと
+        self.assertEqual(sorted(chains["26-09"].strikes), [39000.0, 60000.0, 67000.0])
+
+    def test_result_feeds_the_analytics_engine(self):
+        chains = self.parse([SIOP_PUT_PAGE, SIOP_CALL_PAGE])
+        ch = chains["26-09"]
+        self.assertGreater(ch.total_oi("put"), 0)
+        self.assertGreater(ch.total_oi("call"), 0)
+
+
 class TestHelpers(unittest.TestCase):
     def test_normalise_month(self):
         for text, want in [("2026/09", "26-09"), ("202609", "26-09"),
