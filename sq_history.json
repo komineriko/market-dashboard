@@ -7,14 +7,14 @@
   "bf25": 0.93,
   "put25_iv": 32.44,
   "call25_iv": 27.94,
-  "gex_at_atm": -15860.7,
-  "gex_flip": 68517.0,
-  "gex_regime": "ショートガンマ",
-  "put_effective_delta": 415636.0,
-  "max_pain": 64500.0,
+  "gex_at_atm": 43.1,
+  "gex_flip": 67327.0,
+  "gex_regime": "ロングガンマ",
+  "put_effective_delta": 14885.0,
+  "max_pain": 63125.0,
   "nikkei_vi": null,
   "spot_close": 67460.73,
   "sigma_abs": 5066.0,
-  "cross_check": 8013.0
+  "cross_check": -0.0
  }
 ]
