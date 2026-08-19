@@ -1,22 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-JPXの公表データの所在を調べる診断スクリプト（通常の更新では使わない）。
-
-JPXはページをJSONインデックス経由で描画しており、ファイルの置き場所が
-CMSの都合で変わる。取得が壊れたときに、どこに何があるかを調べ直すために使う。
-GitHub Actions のジョブに一時的なステップとして差し込んで実行する想定。
-
-2026-08 時点で分かっていること:
-  * 行使価格別の建玉 → 大阪取引所日報 Daily_Report_OSE_YYYYMMDD.zip 内の siop_dyr_*.pdf
-  * 清算値段・IV・原資産価格・金利・残日数 → 清算値段ページの rbYYYYMMDD.csv
-  * 日次相場情報のページにはデータファイルが置かれていない
-"""
-
-import io
+"""参加者別・投資部門別のデータが日次で取れるかを調べる診断スクリプト。"""
 import json
+import re
 import sys
-import zipfile
 
 import requests
 
@@ -25,77 +12,83 @@ BASE = "https://www.jpx.co.jp"
 
 
 def get(url):
-    return requests.get(url, headers={"User-Agent": UA}, timeout=180)
+    return requests.get(url, headers={"User-Agent": UA}, timeout=90)
 
 
-def check_publication_timing():
-    """日報がいつ公開されるかを確認する（当日分が出ているか）。"""
-    print(f"\n{'=' * 78}\n### 日報の公開タイミング")
-    url = BASE + "/automation/markets/statistics-derivatives/daily/json/daily_report_202608.json"
-    r = get(url)
-    data = json.loads(r.content.decode("utf-8"))
-    print(f"  JSONのUpdateDate: {data.get('UpdateDate')}")
-    dates = [d.get("TradeDate") for d in data.get("TableDatas", [])][:4]
-    print(f"  掲載されている直近の営業日: {dates}")
-    for d in ("20260819", "20260818"):
-        u = f"{BASE}/automation/markets/statistics-derivatives/daily/files/{d[:6]}/Daily_Report_OSE_{d}.zip"
+def decode(raw):
+    for enc in ("utf-8", "cp932"):
         try:
-            hr = requests.head(u, headers={"User-Agent": UA}, timeout=60)
-            print(f"  {d}: HTTP {hr.status_code}")
-        except Exception as exc:                   # noqa: BLE001
-            print(f"  {d}: {exc}")
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("cp932", errors="replace")
 
 
-def inspect_siop_pdf(trade_date="20260818"):
-    print(f"\n{'=' * 78}\n### 株価指数オプション日報 siop_dyr_{trade_date}.pdf")
-    url = (f"{BASE}/automation/markets/statistics-derivatives/daily/files/"
-           f"{trade_date[:6]}/Daily_Report_OSE_{trade_date}.zip")
-    r = get(url)
+def show_json(label, path, head=1400):
+    url = BASE + path if path.startswith("/") else path
+    print(f"\n{'=' * 78}\n### {label}\n{url}")
+    try:
+        r = get(url)
+    except Exception as exc:                       # noqa: BLE001
+        print(f"  取得失敗: {exc}")
+        return None
+    print(f"  HTTP {r.status_code} / {len(r.content):,} bytes")
     if r.status_code != 200:
-        print(f"  ZIP取得失敗 HTTP {r.status_code}")
+        return None
+    text = decode(r.content)
+    print(f"  先頭:\n{text[:head]}")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
+def scrape_js_paths(label, url):
+    """ページのJSが組み立てているJSONパスを見る。"""
+    print(f"\n{'=' * 78}\n### JS内のパス: {label}\n{url}")
+    try:
+        html = decode(get(url).content)
+    except Exception as exc:                       # noqa: BLE001
+        print(f"  取得失敗: {exc}")
         return
-    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
-        name = next((n for n in zf.namelist() if n.startswith("siop_dyr_") and "flex" not in n), None)
-        if not name:
-            print(f"  siop_dyr が見つからない: {zf.namelist()}")
-            return
-        pdf_bytes = zf.read(name)
-    print(f"  {name}: {len(pdf_bytes):,} bytes")
-
-    import pdfplumber
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        print(f"  ページ数: {len(pdf.pages)}")
-        # 日経225オプションのページを探す
-        target_pages = []
-        for i, page in enumerate(pdf.pages[:40]):
-            text = page.extract_text() or ""
-            if "日経225" in text or "NK225" in text:
-                target_pages.append(i)
-            if len(target_pages) >= 3:
-                break
-        print(f"  日経225を含むページ(先頭40ページ中): {target_pages}")
-
-        for i in (target_pages[:2] or [0, 1]):
-            page = pdf.pages[i]
-            print(f"\n  ===== ページ {i} のテキスト（先頭40行） =====")
-            for line in (page.extract_text() or "").splitlines()[:40]:
-                print(f"  | {line[:250]}")
-            tables = page.extract_tables()
-            print(f"  --- 抽出できた表: {len(tables)}個")
-            for t in tables[:1]:
-                for row in t[:12]:
-                    cells = ["" if c is None else str(c).replace("\n", " ") for c in row]
-                    print(f"  T| {' | '.join(cells)[:250]}")
+    seen = set()
+    for m in re.finditer(r'["\'`]([^"\'`]*(?:automation|\.json|_json)[^"\'`]*)["\'`]', html):
+        s = m.group(1).strip()
+        if len(s) > 6 and s not in seen and not s.endswith((".css", ".js")):
+            seen.add(s)
+            print(f"    {s}")
+    for m in re.finditer(r"`\$\{[^}]+\}([^`]+)`", html):
+        print(f"    TEMPLATE ...{m.group(1)}")
 
 
 def main() -> int:
-    check_publication_timing()
-    try:
-        inspect_siop_pdf()
-    except Exception as exc:                       # noqa: BLE001
-        import traceback
-        traceback.print_exc()
-        print(f"  PDF解析で例外: {exc}")
+    # 1) 参加者別: 日次のJSONがあるか
+    scrape_js_paths("参加者別取引状況(日次)",
+                    BASE + "/markets/derivatives/participant-volume/01.html")
+    for name in ("participant_volume_daily", "participant_volume_day",
+                 "participant_volume_dailylist", "participant_volume_yearlist"):
+        show_json(f"参加者別 {name}",
+                  f"/automation/markets/derivatives/participant-volume/json/{name}.json",
+                  head=700)
+
+    # 2) 建玉残高: 2026年のファイル一覧（頻度と命名を見る）
+    data = show_json("建玉残高 2026年一覧",
+                     "/automation/markets/derivatives/open-interest/json/open_interest_2026.json",
+                     head=900)
+    if data:
+        blob = json.dumps(data, ensure_ascii=False)
+        files = sorted({m for m in re.findall(r'[\w/\-.]+\.xlsx', blob)})
+        nk = [f for f in files if "nk225op" in f]
+        print(f"  ファイル総数 {len(files)} / 日経225オプション分 {len(nk)}")
+        print("  日経225オプションの直近5件:")
+        for f in nk[-5:]:
+            print(f"    {f}")
+        dates = sorted({re.search(r'(\d{8})', f).group(1) for f in nk if re.search(r'(\d{8})', f)})
+        print(f"  日付の範囲: {dates[:3]} … {dates[-3:]}（{len(dates)}件）")
+
+    # 3) 投資部門別
+    scrape_js_paths("投資部門別取引状況",
+                    BASE + "/markets/statistics-derivatives/sector/01.html")
     return 0
 
 
