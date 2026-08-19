@@ -1,12 +1,14 @@
 name: Update SQ report
 
 on:
-  # 一時的な動作確認用。実データで通ることを確認したら外す。
+  # 最終確認用の一時トリガー。確認後に外す。
   push:
     branches: [claude/daily-report-creation-0i8c9c]
   schedule:
-    # 月〜金 21:00 JST = 12:00 UTC（JPXの日次相場情報が出そろったあと）
-    - cron: "0 12 * * 1-5"
+    # 月〜金 23:00 JST = 14:00 UTC
+    # 大阪取引所日報は当日の夕方以降に公開され、当日中に出ないこともある。
+    # 遅めに回し、常に公開済みの最新営業日を対象にする。
+    - cron: "0 14 * * 1-5"
   workflow_dispatch:
     inputs:
       date:
@@ -44,7 +46,8 @@ jobs:
       - name: Build SQ report
         env:
           SQ_NIKKEI_VI: ${{ github.event.inputs.nikkei_vi }}
-          SQ_DEBUG_PDF: "1"
+          # PDFの解析内訳を出したいときは "1" にする（取得が壊れたときの調査用）
+          SQ_DEBUG_PDF: ""
         run: |
           if [ -n "${{ github.event.inputs.date }}" ]; then
             python update_sq_report.py --date "${{ github.event.inputs.date }}"

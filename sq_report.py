@@ -171,9 +171,15 @@ def flatten_metrics(a: MonthAnalysis, far: Optional[MonthAnalysis],
         "no_price_call_oi": a.curve.no_price_call_oi if a.curve else None,
         "no_price_put_oi": a.curve.no_price_put_oi if a.curve else None,
     }
-    lo, hi = a.chain.window()
-    m["window_lo"], m["window_hi"] = lo, hi
-    m["strike_count"] = len(a.chain.strikes)
+    # 捕捉窓は「建玉のある行使価格の範囲」。上場されているだけで建玉ゼロの
+    # 行使価格まで含めると窓が実勢より広くなり、前日比の基準がぶれる。
+    with_oi = [k for k, r in a.chain.rows.items() if (r.call_oi + r.put_oi) > 0]
+    if with_oi:
+        m["window_lo"], m["window_hi"] = min(with_oi), max(with_oi)
+    else:
+        m["window_lo"], m["window_hi"] = a.chain.window()
+    m["strike_count"] = len(with_oi) if with_oi else len(a.chain.strikes)
+    m["strike_count_listed"] = len(a.chain.strikes)
     return m
 
 
