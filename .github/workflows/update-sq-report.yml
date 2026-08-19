@@ -1,9 +1,6 @@
 name: Update SQ report
 
 on:
-  # 最終確認用の一時トリガー。確認後に外す。
-  push:
-    branches: [claude/daily-report-creation-0i8c9c]
   schedule:
     # 月〜金 23:00 JST = 14:00 UTC
     # 大阪取引所日報は当日の夕方以降に公開され、当日中に出ないこともある。
