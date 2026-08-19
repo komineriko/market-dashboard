@@ -1,6 +1,9 @@
 name: Update SQ report
 
 on:
+  # 一時的な動作確認用。実データで通ることを確認したら外す。
+  push:
+    branches: [claude/daily-report-creation-0i8c9c]
   schedule:
     # 月〜金 21:00 JST = 12:00 UTC（JPXの日次相場情報が出そろったあと）
     - cron: "0 12 * * 1-5"
