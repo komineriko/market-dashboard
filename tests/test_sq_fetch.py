@@ -402,15 +402,30 @@ class TestSiopDailyReport(unittest.TestCase):
         self.assertEqual(chains["26-09"].rows[66000.0].put_oi, 2407)
         self.assertEqual(chains["26-09"].rows[65000.0].put_oi, 3553)
 
-    def test_column_shift_is_rejected_not_ingested(self):
+    def test_column_shift_to_trading_value_is_not_ingested(self):
         """
-        列がずれて末尾が取引金額（円）になった行は取り込まない。
+        列がずれて末尾が取引金額（円）になった行を取り込まないこと。
         これを許すと建玉に桁違いの値が紛れ込む（実データで踏んだ）。
+
+        なおこの並びは「清算価格・整数・整数」の形自体は満たしてしまうので、
+        形の検証だけでは捕まらず、桁の上限で弾かれる。検証が二段構えである理由。
         """
         page = "\n".join(SIOP_HEADER + [
             "プットオプション PutOptions",
-            # 末尾が 清算価格 → 取引高 → 取引金額 の並びで、建玉と権利行使が欠けている
             "202609 09.10 64,000 131095018 … … … … 900.0000 910.0000 890.0000 905.0000 + 5.0000 1870.00 201 1,234,567,000",
+        ])
+        st = sf.SiopStats()
+        chains = sf.parse_siop_pages([page], stats=st)
+        self.assertEqual(st.accepted, 0, "桁違いの建玉が取り込まれている")
+        self.assertEqual(st.rejected_oi, 1)
+        self.assertNotIn("26-09", chains)
+
+    def test_shape_violation_is_rejected(self):
+        """清算価格の位置に小数点を持たない値が来る並びは、形の検証で弾く。"""
+        page = "\n".join(SIOP_HEADER + [
+            "プットオプション PutOptions",
+            # 末尾が 取引高 → 取引金額 → 建玉 の順にずれ、-3 が整数になっている
+            "202609 09.10 62,000 131097018 … … … … … … … … … 201 76,000 555",
         ])
         st = sf.SiopStats()
         chains = sf.parse_siop_pages([page], stats=st)
