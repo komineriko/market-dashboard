@@ -44,6 +44,7 @@ jobs:
       - name: Build SQ report
         env:
           SQ_NIKKEI_VI: ${{ github.event.inputs.nikkei_vi }}
+          SQ_DEBUG_PDF: "1"
         run: |
           if [ -n "${{ github.event.inputs.date }}" ]; then
             python update_sq_report.py --date "${{ github.event.inputs.date }}"

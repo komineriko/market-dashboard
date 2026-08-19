@@ -389,6 +389,58 @@ class TestSiopDailyReport(unittest.TestCase):
         # 「yyyymm mm.dd …」のヘッダ行が行使価格として入っていないこと
         self.assertEqual(sorted(chains["26-09"].strikes), [39000.0, 60000.0, 67000.0])
 
+    def test_multiple_records_on_one_line(self):
+        """1行に複数レコードが並ぶページでも、各レコードを取り出せること。"""
+        page = "\n".join(SIOP_HEADER + [
+            "プットオプション PutOptions",
+            "202609 09.10 67,000 131091018 … … … … … … … … … … … 1870.00 … 2,816 "
+            "202609 09.10 66,000 131093018 … … … … … … … … … … … 1495.00 … 2,407 "
+            "202609 09.10 65,000 131094018 … … … … … … … … … … … 1145.00 … 3,553",
+        ])
+        chains = self.parse([page])
+        self.assertEqual(chains["26-09"].rows[67000.0].put_oi, 2816)
+        self.assertEqual(chains["26-09"].rows[66000.0].put_oi, 2407)
+        self.assertEqual(chains["26-09"].rows[65000.0].put_oi, 3553)
+
+    def test_column_shift_is_rejected_not_ingested(self):
+        """
+        列がずれて末尾が取引金額（円）になった行は取り込まない。
+        これを許すと建玉に桁違いの値が紛れ込む（実データで踏んだ）。
+        """
+        page = "\n".join(SIOP_HEADER + [
+            "プットオプション PutOptions",
+            # 末尾が 清算価格 → 取引高 → 取引金額 の並びで、建玉と権利行使が欠けている
+            "202609 09.10 64,000 131095018 … … … … 900.0000 910.0000 890.0000 905.0000 + 5.0000 1870.00 201 1,234,567,000",
+        ])
+        st = sf.SiopStats()
+        chains = sf.parse_siop_pages([page], stats=st)
+        self.assertEqual(st.accepted, 0)
+        self.assertEqual(st.rejected_shape, 1)
+        self.assertNotIn("26-09", chains)
+
+    def test_implausible_open_interest_is_rejected(self):
+        page = "\n".join(SIOP_HEADER + [
+            "プットオプション PutOptions",
+            "202609 09.10 63,000 131096018 … … … … … … … … … … … 755.00 … 987,654,321",
+        ])
+        st = sf.SiopStats()
+        sf.parse_siop_pages([page], stats=st)
+        self.assertEqual(st.rejected_oi, 1)
+        self.assertEqual(st.accepted, 0)
+
+    def test_stats_count_pages_and_records(self):
+        st = sf.SiopStats()
+        sf.parse_siop_pages([SIOP_PUT_PAGE, SIOP_MINI_PAGE], stats=st)
+        self.assertEqual(st.pages, 2)
+        self.assertEqual(st.pages_nikkei, 1)
+        self.assertGreater(st.accepted, 0)
+
+    def test_totals_are_plausible(self):
+        """建玉の合計が現実的な桁に収まること。"""
+        chains = self.parse([SIOP_PUT_PAGE, SIOP_CALL_PAGE])
+        total = chains["26-09"].total_oi("put") + chains["26-09"].total_oi("call")
+        self.assertLess(total, 1_000_000, "建玉の桁がおかしい（列ずれの疑い）")
+
     def test_result_feeds_the_analytics_engine(self):
         chains = self.parse([SIOP_PUT_PAGE, SIOP_CALL_PAGE])
         ch = chains["26-09"]

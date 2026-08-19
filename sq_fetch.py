@@ -779,9 +779,13 @@ DAILY_REPORT_JSON = "/automation/markets/statistics-derivatives/daily/json/daily
 DAILY_REPORT_ZIP = ("/automation/markets/statistics-derivatives/daily/files/"
                     "{month}/Daily_Report_OSE_{date}.zip")
 
-SIOP_LINE_RE = re.compile(
-    r"^(\d{6})\s+(\d{1,2}\.\d{2})\s+([\d,]+)\s+(\d{6,12})\s+(.+)$")
-MISSING_TOKENS = {"…", "...", "-", "―", "‐"}
+# 1レコードの先頭4項目（限月・最終日・行使価格・コード）。
+# 1行に複数レコードが並ぶページがあるため、行頭固定ではなく出現箇所をすべて拾う。
+SIOP_RECORD_RE = re.compile(r"(\d{6})\s+(\d{1,2}\.\d{2})\s+([\d,]+)\s+(\d{6,12})\s+")
+MISSING_TOKENS = {"…", "...", "-", "―", "‐", "－"}
+
+# 1つの行使価格に付く建玉としてあり得ない大きさ。列ずれの検出に使う。
+MAX_PLAUSIBLE_OI = 1_000_000
 
 CALL_MARKERS = ("コールオプション", "CallOptions", "Call Options")
 PUT_MARKERS = ("プットオプション", "PutOptions", "Put Options")
@@ -800,21 +804,62 @@ def _siop_number(token: str) -> Optional[float]:
     return _num(token)
 
 
+def _looks_like_price(token: str) -> bool:
+    """清算価格は小数点を持つ（例 4.00 / 1870.00）。取引高・取引金額は持たない。"""
+    return token in MISSING_TOKENS or ("." in token and _num(token) is not None)
+
+
+def _looks_like_count(token: str) -> bool:
+    """建玉・権利行使数量は小数点を持たない整数。"""
+    return token in MISSING_TOKENS or ("." not in token and _num(token) is not None)
+
+
+def _split_siop_records(line: str) -> Iterable[Tuple[re.Match, str]]:
+    """1行に複数レコードが並んでいても、レコード単位に切り出す。"""
+    starts = list(SIOP_RECORD_RE.finditer(line))
+    for i, m in enumerate(starts):
+        end = starts[i + 1].start() if i + 1 < len(starts) else len(line)
+        yield m, line[m.end():end]
+
+
+@dataclass
+class SiopStats:
+    """PDF解析の内訳。列ずれを検出するために残す。"""
+    pages: int = 0
+    pages_nikkei: int = 0
+    records: int = 0
+    accepted: int = 0
+    rejected_shape: int = 0
+    rejected_oi: int = 0
+    samples_rejected: List[str] = field(default_factory=list)
+    samples_accepted: List[str] = field(default_factory=list)
+
+
 def parse_siop_pages(pages: Iterable[str],
-                     months: Optional[Sequence[str]] = None) -> Dict[str, sa.Chain]:
+                     months: Optional[Sequence[str]] = None,
+                     stats: Optional[SiopStats] = None) -> Dict[str, sa.Chain]:
     """
     日報（株価指数オプション）のページテキストから、日経225オプションの
     行使価格別 建玉残高・清算価格を取り出す。PDFに依存しないのでテストしやすい。
+
+    右から3つ（清算価格・権利行使数量・建玉残高）を読むが、列がずれていないかを
+    形で検証する。清算価格は小数点を持ち、建玉は持たない。これを満たさない行は
+    取り込まずに数える。検証しないと、列がずれたときに取引金額（円）を建玉として
+    読み込み、桁違いの値が紛れ込む。
     """
     chains: Dict[str, sa.Chain] = {}
     is_call: Optional[bool] = None   # PUT/CALL の見出しはページをまたいで効き続ける
+    st = stats if stats is not None else SiopStats()
 
     for text in pages:
+        st.pages += 1
         if not text:
             continue
         # 商品はページごとに判定し直す。タイトル行が無いページは対象外として扱う。
         in_nikkei225 = any(line.strip().startswith(NIKKEI225_OPTION_TITLE)
                            for line in text.splitlines())
+        if in_nikkei225:
+            st.pages_nikkei += 1
 
         for raw_line in text.splitlines():
             line = raw_line.strip()
@@ -825,35 +870,51 @@ def parse_siop_pages(pages: Iterable[str],
             if not in_nikkei225 or is_call is None:
                 continue
 
-            m = SIOP_LINE_RE.match(line)
-            if not m:
-                continue
-            month = _normalise_month(m.group(1))
-            strike = _num(m.group(3))
-            if month is None or not strike or strike <= 0:
-                continue
-            if months and month not in months:
-                continue
+            for m, segment in _split_siop_records(line):
+                month = _normalise_month(m.group(1))
+                strike = _num(m.group(3))
+                if month is None or not strike or strike <= 0:
+                    continue
+                st.records += 1
+                if months and month not in months:
+                    continue
 
-            tail = m.group(5).split()
-            if len(tail) < 3:
-                continue
-            oi = _siop_number(tail[-1])
-            settle = _siop_number(tail[-3])
-            if oi is None and settle is None:
-                continue
+                tail = segment.split()
+                if len(tail) < 3 or not _looks_like_price(tail[-3]) \
+                        or not _looks_like_count(tail[-1]) \
+                        or not _looks_like_count(tail[-2]):
+                    st.rejected_shape += 1
+                    if len(st.samples_rejected) < 12:
+                        st.samples_rejected.append(line[:220])
+                    continue
 
-            chain = chains.setdefault(month, sa.Chain(contract_month=month))
-            row = chain.rows.get(strike) or sa.StrikeRow(strike=strike)
-            if is_call:
-                row.call_oi = int(oi or 0)
-                if settle is not None:
-                    row.call_price = settle
-            else:
-                row.put_oi = int(oi or 0)
-                if settle is not None:
-                    row.put_price = settle
-            chain.add(row)
+                oi = _siop_number(tail[-1])
+                settle = _siop_number(tail[-3])
+                if oi is not None and oi > MAX_PLAUSIBLE_OI:
+                    st.rejected_oi += 1
+                    if len(st.samples_rejected) < 12:
+                        st.samples_rejected.append(line[:220])
+                    continue
+                if oi is None and settle is None:
+                    continue
+
+                st.accepted += 1
+                if len(st.samples_accepted) < 5:
+                    st.samples_accepted.append(
+                        f"{month} K={strike:,.0f} {'C' if is_call else 'P'} "
+                        f"清算={settle} 建玉={oi}")
+
+                chain = chains.setdefault(month, sa.Chain(contract_month=month))
+                row = chain.rows.get(strike) or sa.StrikeRow(strike=strike)
+                if is_call:
+                    row.call_oi = int(oi or 0)
+                    if settle is not None:
+                        row.call_price = settle
+                else:
+                    row.put_oi = int(oi or 0)
+                    if settle is not None:
+                        row.put_price = settle
+                chain.add(row)
 
     return chains
 
@@ -866,7 +927,17 @@ def parse_siop_pdf(pdf_bytes: bytes,
         raise FetchError("日報PDFを読むには pdfplumber が必要です。") from exc
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         pages = [p.extract_text() or "" for p in pdf.pages]
-    chains = parse_siop_pages(pages, months)
+    st = SiopStats()
+    chains = parse_siop_pages(pages, months, stats=st)
+    if os.environ.get("SQ_DEBUG_PDF"):
+        print(f"[PDF] ページ {st.pages}（日経225 {st.pages_nikkei}） / "
+              f"レコード {st.records} / 採用 {st.accepted} / "
+              f"形が合わず除外 {st.rejected_shape} / 建玉が過大で除外 {st.rejected_oi}",
+              file=sys.stderr)
+        for x in st.samples_accepted:
+            print(f"[PDF] 採用例: {x}", file=sys.stderr)
+        for x in st.samples_rejected:
+            print(f"[PDF] 除外例: {x}", file=sys.stderr)
     if not chains:
         raise FetchError(
             f"日報PDF（{len(pages)}ページ）から日経225オプションの建玉を抽出できませんでした。")
