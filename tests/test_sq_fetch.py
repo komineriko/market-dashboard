@@ -201,6 +201,95 @@ class TestMultiSheetExcel(unittest.TestCase):
             self.assertEqual(r.put_price, 3810)
 
 
+SETTLE_HEADER = ("銘柄コード,銘柄名称,PUT/CAL,限月,権利行使価格,清算価格,理論価格,"
+                 "原資産価格,ボラティリティ,金利,残日数,原資産名称")
+
+SETTLE_ROWS = [
+    "＊ 指数先物、国債先物、指数オプション順で表示しております。,,,,,,,,,,,",
+    "＊ 前取引日に取引最終日を迎えた銘柄につきましては掲載されておりません。,,,,,,,,,,,",
+    SETTLE_HEADER,
+    # 先物（行使価格が無いので無視される）
+    "161090018,FUT_225_260910,,202609,,65480,65480,65326.42,,1.1529,23,日経225",
+    # 日経225オプション 標準限月（採用）
+    "141330018,CAL_225_260910_67000,CAL,202609,67000,1180,1178,65326.42,28.5,1.1529,23,日経225",
+    "141330019,PUT_225_260910_67000,PUT,202609,67000,1870,1868,65326.42,29.1,1.1529,23,日経225",
+    "141330020,CAL_225_260910_70000,CAL,202609,70000,905,903,65326.42,28.0,1.1529,23,日経225",
+    "141330021,PUT_225_260910_60000,PUT,202609,60000,340,339,65326.42,36.6,1.1529,23,日経225",
+    # 翌限月
+    "141340010,CAL_225_261009_67000,CAL,202610,67000,2100,2098,65326.42,29.5,1.2,52,日経225",
+    # ウィークリー（最終売買日が違うので除外されるべき）
+    "141350010,CAL_225W_260904_67000,CAL,202609,67000,300,299,65326.42,27.0,1.15,9,日経225",
+    # 他の原資産（除外されるべき）
+    "145000010,CAL_TPX_260910_3000,CAL,202609,3000,50,49,3020.5,18.0,1.15,23,TOPIX",
+]
+
+
+class TestSettlementCsv(unittest.TestCase):
+    """JPX 清算値段CSV（rbYYYYMMDD.csv）の実形式にもとづく検証。"""
+
+    def setUp(self):
+        self.raw = to_cp932(SETTLE_ROWS)
+
+    def test_extracts_standard_nikkei_options(self):
+        chains, meta = sf.parse_settlement_csv(self.raw)
+        self.assertIn("26-09", chains)
+        self.assertEqual(sorted(chains["26-09"].strikes), [60000.0, 67000.0, 70000.0])
+
+    def test_prices_land_on_correct_side(self):
+        chains, _ = sf.parse_settlement_csv(self.raw)
+        r = chains["26-09"].rows[67000.0]
+        self.assertEqual(r.call_price, 1180)
+        self.assertEqual(r.put_price, 1870)
+        self.assertEqual(chains["26-09"].rows[60000.0].put_price, 340)
+        self.assertIsNone(chains["26-09"].rows[60000.0].call_price)
+
+    def test_futures_rows_are_ignored(self):
+        chains, _ = sf.parse_settlement_csv(self.raw)
+        # 先物は行使価格を持たないので板に入らない
+        for ch in chains.values():
+            self.assertTrue(all(k > 0 for k in ch.strikes))
+
+    def test_weekly_and_other_underlyings_excluded(self):
+        chains, _ = sf.parse_settlement_csv(self.raw)
+        # ウィークリー(225W)を取り込んでいたら 67,000 CALL が 300 で上書きされる
+        self.assertEqual(chains["26-09"].rows[67000.0].call_price, 1180)
+        # TOPIX の行使価格 3,000 が混ざっていないこと
+        self.assertNotIn(3000.0, chains["26-09"].rows)
+
+    def test_month_filter(self):
+        chains, _ = sf.parse_settlement_csv(self.raw, months=["26-09"])
+        self.assertEqual(list(chains), ["26-09"])
+        both, _ = sf.parse_settlement_csv(self.raw)
+        self.assertIn("26-10", both)
+
+    def test_meta_carries_underlying_rate_and_days(self):
+        _, meta = sf.parse_settlement_csv(self.raw)
+        m = meta["26-09"]
+        self.assertAlmostEqual(m.underlying, 65326.42)
+        self.assertAlmostEqual(m.rate_pct, 1.1529)
+        self.assertEqual(m.days, 23)
+        self.assertEqual(m.last_trading_day, "260910")
+
+    def test_raises_when_no_nikkei_options(self):
+        raw = to_cp932([SETTLE_HEADER,
+                        "145000010,CAL_TPX_260910_3000,CAL,202609,3000,50,49,3020.5,18.0,1.15,23,TOPIX"])
+        with self.assertRaises(sf.FetchError):
+            sf.parse_settlement_csv(raw)
+
+    def test_raises_when_columns_missing(self):
+        raw = to_cp932(["銘柄コード,銘柄名称,限月", "1,CAL_225_260910_67000,202609"])
+        with self.assertRaises(sf.FetchError):
+            sf.parse_settlement_csv(raw)
+
+    def test_discover_settlement_files(self):
+        html = ('<a href="/markets/derivatives/settlement-price/tvdivq00000014l6-att/rb20260818.csv">18日</a>'
+                '<a href="/markets/derivatives/settlement-price/tvdivq00000014l6-att/rb20260819.csv">19日</a>')
+        files = sf.discover_settlement_files(html)
+        self.assertEqual(files[0][0].isoformat(), "2026-08-19")
+        self.assertTrue(files[0][1].startswith("https://www.jpx.co.jp/"))
+        self.assertEqual(len(files), 2)
+
+
 class TestHelpers(unittest.TestCase):
     def test_normalise_month(self):
         for text, want in [("2026/09", "26-09"), ("202609", "26-09"),

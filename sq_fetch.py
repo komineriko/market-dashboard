@@ -36,6 +36,8 @@ import sq_analytics as sa
 USER_AGENT = ("Mozilla/5.0 (compatible; market-dashboard/1.0; "
               "+https://github.com/komineriko/market-dashboard)")
 JPX_DAILY_PAGE = "https://www.jpx.co.jp/markets/statistics-derivatives/daily/index.html"
+# 清算値段等（先物・オプション）。行使価格ごとの清算価格・IV・原資産価格・金利・残日数を持つ
+JPX_SETTLEMENT_PAGE = "https://www.jpx.co.jp/markets/derivatives/settlement-price/index.html"
 JPX_BASE = "https://www.jpx.co.jp"
 TIMEOUT = 60
 
@@ -120,7 +122,8 @@ def latest_daily_file_url(target: Optional[date] = None) -> Tuple[date, str]:
 # 表形式ファイルの読み込み（列名で列位置を決める）
 # ---------------------------------------------------------------------------
 
-ENCODINGS = ("cp932", "utf-8-sig", "utf-8", "euc-jp")
+# UTF-8 を先に試す。cp932 を先にすると UTF-8 のファイルが化けたまま成功しうる
+ENCODINGS = ("utf-8-sig", "utf-8", "cp932", "euc-jp")
 
 # 論理名 → 列名に現れうるキーワード（順に優先）
 COLUMN_HINTS: Dict[str, Sequence[str]] = {
@@ -580,3 +583,108 @@ def load_chains(months: Optional[Sequence[str]] = None,
     chains = parse_chains_any(raw, url.rsplit("/", 1)[-1], months)
     return ChainSource(chains=chains, origin=f"JPX 日次相場情報 {url.rsplit('/', 1)[-1]}",
                        as_of=d)
+
+
+# ---------------------------------------------------------------------------
+# JPX 清算値段CSV（rbYYYYMMDD.csv）
+# ---------------------------------------------------------------------------
+#
+# 実際の中身（2026-08-19 時点で確認）:
+#   銘柄コード,銘柄名称,PUT/CAL,限月,権利行使価格,清算価格,理論価格,原資産価格,
+#   ボラティリティ,金利,残日数,原資産名称
+#   141330018,CAL_225_260910_20000,CAL,202609,20000,45450,45447,65326.42,228.53,1.1529,23,日経225
+#
+# 銘柄名称は <CAL|PUT>_225_<最終売買日 YYMMDD>_<行使価格>。
+# ウィークリーやミニは最終売買日が異なるため、この日付で系列を選り分けられる。
+# ボラティリティ列は深いITMで極端な値を取るので採用せず、清算価格から自前で逆算する。
+
+SETTLEMENT_LINK_RE = re.compile(r'href="([^"]*?/(?:rb)(\d{8})\.csv)"', re.IGNORECASE)
+NIKKEI_SERIES_RE = re.compile(r"^(CAL|PUT)_225_(\d{6})_(\d+)$")
+SETTLE_HEADER_KEY = "銘柄コード"
+NIKKEI_UNDERLYING = "日経225"
+
+
+@dataclass
+class MonthMeta:
+    """限月ごとに JPX が付けている参考値。"""
+    underlying: Optional[float] = None   # 原資産価格
+    rate_pct: Optional[float] = None     # 金利（%）
+    days: Optional[int] = None           # 残日数
+    last_trading_day: Optional[str] = None
+
+
+def discover_settlement_files(page_html: str) -> List[Tuple[date, str]]:
+    """清算値段ページから (日付, 絶対URL) を新しい順に返す。"""
+    found: Dict[date, str] = {}
+    for href, ymd in SETTLEMENT_LINK_RE.findall(page_html):
+        try:
+            d = datetime.strptime(ymd, "%Y%m%d").date()
+        except ValueError:
+            continue
+        url = href if href.startswith("http") else JPX_BASE + (
+            href if href.startswith("/") else "/" + href)
+        found.setdefault(d, url)
+    return sorted(found.items(), key=lambda x: x[0], reverse=True)
+
+
+def parse_settlement_csv(raw: bytes, months: Optional[Sequence[str]] = None
+                         ) -> Tuple[Dict[str, sa.Chain], Dict[str, MonthMeta]]:
+    """清算値段CSVから日経225オプション（標準限月）の板を組み立てる。"""
+    rows = rows_from_bytes(raw, "settlement.csv")
+    hidx = next((i for i, r in enumerate(rows)
+                 if r and str(r[0]).strip() == SETTLE_HEADER_KEY), None)
+    if hidx is None:
+        raise FetchError("清算値段CSVのヘッダ行（銘柄コード…）が見つかりません。")
+    header = [str(c).strip() for c in rows[hidx]]
+    col = {name: i for i, name in enumerate(header)}
+    required = ("銘柄名称", "PUT/CAL", "限月", "権利行使価格", "清算価格", "原資産名称")
+    missing = [c for c in required if c not in col]
+    if missing:
+        raise FetchError(f"清算値段CSVに想定した列がありません: {missing} / 実際: {header}")
+
+    chains: Dict[str, sa.Chain] = {}
+    meta: Dict[str, MonthMeta] = {}
+    seen_series = 0
+
+    for row in rows[hidx + 1:]:
+        def cell(name: str) -> str:
+            i = col.get(name)
+            return str(row[i]).strip() if i is not None and i < len(row) else ""
+
+        if cell("原資産名称") != NIKKEI_UNDERLYING:
+            continue
+        m = NIKKEI_SERIES_RE.match(cell("銘柄名称"))
+        if not m:
+            continue          # ウィークリー・ミニ・その他の系列
+        seen_series += 1
+
+        month = _normalise_month(cell("限月"))
+        if month is None or (months and month not in months):
+            continue
+        strike = _num(cell("権利行使価格"))
+        price = _num(cell("清算価格"))
+        if not strike or strike <= 0:
+            continue
+        is_call = m.group(1) == "CAL"
+
+        chain = chains.setdefault(month, sa.Chain(contract_month=month))
+        r = chain.rows.get(strike) or sa.StrikeRow(strike=strike)
+        if is_call:
+            r.call_price = price
+        else:
+            r.put_price = price
+        chain.add(r)
+
+        mm = meta.setdefault(month, MonthMeta())
+        if mm.underlying is None:
+            mm.underlying = _num(cell("原資産価格"))
+            mm.rate_pct = _num(cell("金利"))
+            d = _num(cell("残日数"))
+            mm.days = int(d) if d is not None else None
+            mm.last_trading_day = m.group(2)
+
+    if not chains:
+        raise FetchError(
+            "清算値段CSVから日経225オプションの標準限月を抽出できませんでした"
+            f"（該当形式の銘柄 {seen_series} 件）。")
+    return chains, meta
