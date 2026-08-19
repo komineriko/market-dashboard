@@ -500,6 +500,183 @@ class TestSiopDailyReport(unittest.TestCase):
         self.assertGreater(ch.total_oi("call"), 0)
 
 
+# 実際の indexfut_oi_by_tp.xlsx から読み取った並び（2026-08-14 時点）
+FUT_PARTICIPANT_ROWS = [
+    ["指数先物取引参加者別建玉残高"] + [""] * 20,
+    ["（ 2026年08月14日現在 ）"] + [""] * 20,
+    ["2026年08月17日"] + [""] * 20,
+    ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "株式会社大阪取引所"] + [""] * 6,
+    ["＜日経225先物＞"] + [""] * 20,
+    ["", "", "（売超参加者）", "", "", "（買超参加者）", "", "", "", "", "",
+     "", "（売超参加者）", "", "", "（買超参加者）", "", "", "", "", ""],
+    ["1", "2026年09月限月", "12724", "ＨＳＢＣ証券", "33442.0", "12400", "野村証券", "35374.0",
+     "", "", "1", "2026年12月限月", "11696", "みずほ証券", "2654.0", "11788", "ソシエテＧ証券",
+     "2649.0", "", "", ""],
+    ["3", "2026年09月限月", "11560", "ゴールドマン証券", "12863.0", "11714", "ＪＰモルガン証券",
+     "6181.0", "", "", "3", "2026年12月限月", "11792", "シティグループ証券", "1568.0",
+     "12400", "野村証券", "1748.0", "", "", ""],
+    # 片側だけ埋まっている行
+    ["13", "2026年09月限月", "11512", "光世証券", "80.0", "12336", "日産証券", "85.0",
+     "", "", "13", "2026年12月限月", "", "", "", "12330", "マネックス証券", "9.0", "", "", ""],
+    ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+    ["＜日経225mini＞"] + [""] * 20,
+    ["", "", "（売超参加者）", "", "", "（買超参加者）", "", "", "", "", "",
+     "", "（売超参加者）", "", "", "（買超参加者）", "", "", "", "", ""],
+    ["1", "2026年09月限月", "12410", "バークレイズ証券", "65824.0", "12479",
+     "ＡＢＮクリアリン証券", "34314.0", "", "", "1", "2026年10月限月", "12479",
+     "ＡＢＮクリアリン証券", "4047.0", "11560", "ゴールドマン証券", "3000.0", "", "", ""],
+]
+
+
+class TestParticipantOpenInterest(unittest.TestCase):
+    """取引参加者別建玉残高（週次）の抽出。"""
+
+    def setUp(self):
+        self.rows = sf.parse_participant_rows(FUT_PARTICIPANT_ROWS)
+        self.by_key = {(r.product, r.month, r.name): r for r in self.rows}
+
+    def test_product_sections_are_separated(self):
+        products = {r.product for r in self.rows}
+        self.assertEqual(products, {"日経225先物", "日経225mini"})
+
+    def test_sell_and_buy_sides(self):
+        hsbc = self.by_key[("日経225先物", "26-09", "ＨＳＢＣ証券")]
+        self.assertEqual(hsbc.sell, 33442.0)
+        self.assertEqual(hsbc.buy, 0.0)
+        self.assertEqual(hsbc.net, -33442.0)
+        nomura = self.by_key[("日経225先物", "26-09", "野村証券")]
+        self.assertEqual(nomura.buy, 35374.0)
+        self.assertEqual(nomura.net, 35374.0)
+
+    def test_right_hand_block_is_a_different_month(self):
+        """1行の右側ブロックは別の限月。取り違えないこと。"""
+        mizuho = self.by_key[("日経225先物", "26-12", "みずほ証券")]
+        self.assertEqual(mizuho.sell, 2654.0)
+        self.assertNotIn(("日経225先物", "26-09", "みずほ証券"), self.by_key)
+
+    def test_half_filled_row(self):
+        """売超が空で買超だけある行を落とさないこと。"""
+        monex = self.by_key[("日経225先物", "26-12", "マネックス証券")]
+        self.assertEqual(monex.buy, 9.0)
+        self.assertEqual(monex.sell, 0.0)
+
+    def test_same_participant_appears_in_multiple_products(self):
+        gs_fut = self.by_key[("日経225先物", "26-09", "ゴールドマン証券")]
+        gs_mini = self.by_key[("日経225mini", "26-10", "ゴールドマン証券")]
+        self.assertEqual(gs_fut.net, -12863.0)
+        self.assertEqual(gs_mini.net, 3000.0)
+
+    def test_aggregate_converts_mini_to_large(self):
+        agg = dict((name, net) for name, net, _ in sf.aggregate_participant_net(self.rows))
+        # ゴールドマン: 先物 -12,863 ＋ mini +3,000×0.1 = -12,563
+        self.assertAlmostEqual(agg["ゴールドマン証券"], -12563.0, places=3)
+        # バークレイズ: mini の売超 65,824×0.1 = -6,582.4
+        self.assertAlmostEqual(agg["バークレイズ証券"], -6582.4, places=3)
+
+    def test_aggregate_is_sorted_by_net(self):
+        agg = sf.aggregate_participant_net(self.rows)
+        nets = [net for _, net, _ in agg]
+        self.assertEqual(nets, sorted(nets, reverse=True))
+        self.assertGreater(nets[0], 0)
+        self.assertLess(nets[-1], 0)
+
+    def test_month_filter(self):
+        agg = dict((n, v) for n, v, _ in
+                   sf.aggregate_participant_net(self.rows, months=["26-09"]))
+        # 26-12 しか出ていない参加者は落ちる
+        self.assertNotIn("みずほ証券", agg)
+        self.assertIn("ＨＳＢＣ証券", agg)
+
+    def test_breakdown_keeps_product_detail(self):
+        agg = {name: bd for name, _net, bd in sf.aggregate_participant_net(self.rows)}
+        self.assertAlmostEqual(agg["ゴールドマン証券"]["日経225先物"], -12863.0, places=3)
+        self.assertAlmostEqual(agg["ゴールドマン証券"]["日経225mini"], 300.0, places=3)
+
+    def test_unknown_product_is_skipped_not_miscounted(self):
+        """係数の分からない商品をラージ扱いして誤集計しないこと。"""
+        rows = list(self.rows) + [sf.ParticipantRow(product="謎の先物", month="26-09",
+                                                    name="架空証券", code="9999", buy=999.0)]
+        agg = dict((n, v) for n, v, _ in sf.aggregate_participant_net(rows))
+        self.assertNotIn("架空証券", agg)
+
+    def test_header_rows_are_not_parsed_as_data(self):
+        names = {r.name for r in self.rows}
+        for junk in ("（売超参加者）", "（買超参加者）", "株式会社大阪取引所"):
+            self.assertNotIn(junk, names)
+
+
+class TestParticipantSection(unittest.TestCase):
+    """レポート側の参加者別セクション。前週比と注意書きが揃うこと。"""
+
+    def setUp(self):
+        import sq_report as sr
+        from datetime import date
+        self.sr = sr
+        self.date = date
+        rows = sf.parse_participant_rows(FUT_PARTICIPANT_ROWS)
+        self.src = sf.ParticipantSource(as_of=date(2026, 8, 14), rows=rows,
+                                        origin="20260814_indexfut_oi_by_tp.xlsx")
+
+    def test_all_contract_months_are_aggregated(self):
+        """
+        先物の限月は四半期サイクルなので、オプションの当限で絞ると12月限が落ちる。
+        引数の months に関わらず、ファイルにある限月をすべて合算すること。
+        """
+        sec = self.sr.build_participant_section(
+            self.src, None, ["26-09"], self.date(2026, 8, 18))
+        by = {r["name"]: r for r in sec["rows"]}
+        # 12月限にしか出てこない参加者が残っていること
+        self.assertIn("みずほ証券", by)
+        self.assertIn("26-12", sec["months"])
+        self.assertIn("日経225mini", sec["products"])
+
+    def test_section_reports_lag_from_base_date(self):
+        sec = self.sr.build_participant_section(
+            self.src, None, ["26-09", "26-10", "26-12"], self.date(2026, 8, 18))
+        self.assertTrue(sec["available"])
+        self.assertEqual(sec["as_of"], "2026-08-14")
+        self.assertEqual(sec["lag_days"], 4)
+        self.assertTrue(sec["stale"], "4日前のデータが古いものとして扱われていない")
+
+    def test_rows_are_ordered_by_absolute_size(self):
+        sec = self.sr.build_participant_section(
+            self.src, None, ["26-09", "26-10", "26-12"], self.date(2026, 8, 18))
+        names = [r["name"] for r in sec["rows"]]
+        # 野村 +35,374 と ＨＳＢＣ -33,442 が上位に来る
+        self.assertIn("野村証券", names[:3])
+        self.assertIn("ＨＳＢＣ証券", names[:3])
+
+    def test_side_label(self):
+        sec = self.sr.build_participant_section(
+            self.src, None, ["26-09"], self.date(2026, 8, 18))
+        by = {r["name"]: r for r in sec["rows"]}
+        self.assertEqual(by["ＨＳＢＣ証券"]["side"], "ショート")
+        self.assertEqual(by["野村証券"]["side"], "ロング")
+
+    def test_week_over_week_change(self):
+        prev = {"as_of": "2026-08-07", "net": {"ゴールドマン証券": -20000.0}}
+        sec = self.sr.build_participant_section(
+            self.src, prev, ["26-09", "26-10", "26-12"], self.date(2026, 8, 18))
+        gs = next(r for r in sec["rows"] if r["name"] == "ゴールドマン証券")
+        # -12,563 − (-20,000) = +7,437 ＝ ショートを縮小した
+        self.assertEqual(gs["before"], "-20,000.0")
+        self.assertEqual(gs["change"], "+7,437.0")
+        self.assertEqual(sec["prev_as_of"], "2026-08-07")
+
+    def test_missing_source_degrades_gracefully(self):
+        sec = self.sr.build_participant_section(
+            None, None, ["26-09"], self.date(2026, 8, 18))
+        self.assertFalse(sec["available"])
+        self.assertIn("note", sec)
+
+    def test_snapshot_roundtrip(self):
+        snap = self.sr.participant_snapshot(self.src, ["26-09", "26-10", "26-12"])
+        self.assertEqual(snap["as_of"], "2026-08-14")
+        self.assertIn("ゴールドマン証券", snap["net"])
+        self.assertAlmostEqual(snap["net"]["ゴールドマン証券"], -12563.0, places=1)
+        self.assertIsNone(self.sr.participant_snapshot(None, ["26-09"]))
+
+
 class TestHelpers(unittest.TestCase):
     def test_normalise_month(self):
         for text, want in [("2026/09", "26-09"), ("202609", "26-09"),

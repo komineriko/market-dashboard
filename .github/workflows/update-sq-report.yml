@@ -14,6 +14,9 @@ on:
       nikkei_vi:
         description: "日経VI（引け直前の水準）。空なら未取得として開示"
         required: false
+      probe:
+        description: "yes にするとJPXのデータ所在を調べる診断ステップを実行する"
+        required: false
 
 permissions:
   contents: write
@@ -39,6 +42,10 @@ jobs:
 
       - name: Run tests
         run: python -m unittest discover -s tests -v
+
+      - name: Probe participant data (一時的な調査ステップ)
+        if: ${{ github.event.inputs.probe == 'yes' }}
+        run: python tools/probe_jpx.py
 
       - name: Build SQ report
         env:

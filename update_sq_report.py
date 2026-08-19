@@ -216,6 +216,7 @@ def main(argv=None) -> int:
     base = datetime.strptime(args.date, "%Y-%m-%d").date() if args.date else None
     sources: list[str] = []
 
+    participants = None
     if args.demo:
         base = base or date.today()
         chains, spot = demo_chains(base)
@@ -248,6 +249,14 @@ def main(argv=None) -> int:
         if vi_source:
             sources.append(f"日経VI: {vi_source}")
 
+        # 参加者別ネット建玉（週次）。取れなくてもレポートは成立させる。
+        participants = sf.fetch_participant_oi(target=base)
+        if participants:
+            sources.append(f"参加者別建玉: {participants.origin}"
+                           f"（{participants.as_of} 時点）")
+        else:
+            print("WARN: 参加者別建玉残高を取得できませんでした。", file=sys.stderr)
+
     if not chains:
         print("ERROR: オプション板が空です。", file=sys.stderr)
         return 1
@@ -259,7 +268,7 @@ def main(argv=None) -> int:
         report, snapshot = sr.build_report(
             chains=chains, spot=spot, vi=vi, vi_source=vi_source, base=base,
             prev_snapshot=prev, history=history, events=load_events(),
-            origin=origin, extra_sources=sources)
+            origin=origin, extra_sources=sources, participants=participants)
     except (ValueError, KeyError) as exc:
         print(f"ERROR: レポートの組み立てに失敗しました: {exc}", file=sys.stderr)
         return 1
@@ -274,6 +283,10 @@ def main(argv=None) -> int:
     print(f"前日比: {'有効' if m['has_prev'] else '無し（次回から）'} / "
           f"開示 {len(report['disclosures'])}件 / 監視 {len(report['watch'])}件 / "
           f"答え合わせ {len(report['answer_check'])}件")
+    p = report.get("participants") or {}
+    if p.get("available"):
+        print(f"参加者別建玉: {p['as_of']} 時点（{p['lag_days']}日前） / "
+              f"上位 {len(p['rows'])}社 / 合計 {p['total']}")
 
     if args.dry_run:
         print("--dry-run のためファイルは書き込みませんでした。")
