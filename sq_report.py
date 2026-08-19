@@ -259,7 +259,7 @@ def build_disclosures(a: MonthAnalysis, prev_metrics: Optional[Dict[str, Any]],
         missing.append("日経平均の日中高値・安値・寄り値")
     if vi_source is None:
         missing.append("日経VI（引け直前の水準）")
-    missing.append("参加者別手口・先物ネット建玉")
+    missing.append("参加者別の当日手口（売買方向を伴う出来高）")
     missing.append("ナイトセッションの先物終値")
     out.append({
         "level": "warn",
@@ -855,8 +855,8 @@ def build_limits(a: MonthAnalysis, spot, vi: Optional[float],
                       "値動きの形（寄り天か後場崩れか）を特定できていない。")
     if vi is None:
         limits.append("日経VIが未取得。恐怖ゲージは板由来のRR25・BF25・ATM IVのみで判定している。")
-    limits.append("参加者別手口・先物ネット建玉は自動取得の対象外。"
-                  "誰が動いたかの検証は本レポートでは行っていない。")
+    limits.append("参加者別ネット建玉は週次公表で、証券会社単位・売超買超それぞれ上位15社のみ。"
+                  "市場全体の集計ではなく、自己玉と顧客玉も区別できない。")
     if not window:
         limits.append("前日スナップショットが無いため、前日比・実効デルタの3分解・答え合わせは"
                       "次回の更新から有効になる。")
@@ -916,7 +916,8 @@ def build_report(chains: Dict[str, sa.Chain], spot, vi: Optional[float],
                  prev_snapshot: Optional[Dict[str, Any]] = None,
                  history: Optional[Sequence[Dict[str, Any]]] = None,
                  events: Optional[Sequence[Dict[str, str]]] = None,
-                 origin: str = "", extra_sources: Optional[Sequence[str]] = None
+                 origin: str = "", extra_sources: Optional[Sequence[str]] = None,
+                 participants=None
                  ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     レポート用の dict と、翌日のために保存するスナップショットを返す。
@@ -1000,6 +1001,9 @@ def build_report(chains: Dict[str, sa.Chain], spot, vi: Optional[float],
         "watch": build_watch(a, far, metrics, decomp),
         "answer_check": build_answer_check(prev_watch, metrics, walls_extra),
         "limits": build_limits(a, spot, vi, window, decomp),
+        "participants": build_participant_section(
+            participants, (prev_snapshot or {}).get("participants"),
+            [an.month for an in analyses], base),
         "metrics": metrics,
     }
 
@@ -1011,5 +1015,79 @@ def build_report(chains: Dict[str, sa.Chain], spot, vi: Optional[float],
                    if k in ("id", "metric", "value", "label", "rule", "hi", "hi_means", "lo", "lo_means")}
                   for item in report["watch"]],
         "chains": {an.month: chain_to_dict(an.chain) for an in analyses},
+        "participants": participant_snapshot(participants, [an.month for an in analyses]),
     }
     return report, snapshot
+
+
+# ---------------------------------------------------------------------------
+# 取引参加者別ネット建玉（週次）
+# ---------------------------------------------------------------------------
+
+def build_participant_section(psrc, prev: Optional[Dict[str, Any]],
+                              months: Sequence[str], base: date,
+                              top: int = 14) -> Dict[str, Any]:
+    """
+    参加者別のネット建玉と前週比。
+
+    このデータの性質上、次の3点はレポート側で必ず明示する。
+      * 証券会社単位であり、その先の顧客が誰かは分からない（自己玉と顧客玉が混在）
+      * 売超・買超それぞれ上位15社のみで、市場全体の集計ではない
+      * 週次なので、日次のレポートに対して常に時間差がある
+    """
+    if psrc is None:
+        return {
+            "available": False,
+            "note": "参加者別建玉残高を取得できなかった。",
+        }
+
+    agg = sa_aggregate(psrc.rows, months)
+    prev_net = (prev or {}).get("net") or {}
+    prev_as_of = (prev or {}).get("as_of")
+
+    rows = []
+    for name, net, breakdown in agg:
+        before = prev_net.get(name)
+        change = (net - before) if isinstance(before, (int, float)) else None
+        rows.append({
+            "name": name,
+            "net": _fmt(net, 1, plus=True),
+            "before": _fmt(before, 1, plus=True) if before is not None else "—",
+            "change": _fmt(change, 1, plus=True) if change is not None else "—",
+            "side": "ロング" if net > 0 else ("ショート" if net < 0 else "—"),
+            "breakdown": "／".join(f"{p} {v:+,.0f}" for p, v in sorted(breakdown.items())),
+            "_abs": abs(net),
+        })
+    rows.sort(key=lambda r: r["_abs"], reverse=True)
+    for r in rows:
+        r.pop("_abs")
+
+    total = sum(net for _, net, _ in agg)
+    lag = (base - psrc.as_of).days
+
+    return {
+        "available": True,
+        "as_of": psrc.as_of.isoformat(),
+        "lag_days": lag,
+        "origin": psrc.origin,
+        "months": list(months),
+        "total": _fmt(total, 1, plus=True),
+        "prev_as_of": prev_as_of or "—",
+        "rows": rows[:top],
+        "stale": lag >= 3,
+    }
+
+
+def sa_aggregate(rows, months):
+    """sq_fetch の集計をレポート層から呼ぶための薄いラッパ。"""
+    import sq_fetch
+    return sq_fetch.aggregate_participant_net(rows, months)
+
+
+def participant_snapshot(psrc, months: Sequence[str]) -> Optional[Dict[str, Any]]:
+    if psrc is None:
+        return None
+    return {
+        "as_of": psrc.as_of.isoformat(),
+        "net": {name: round(net, 1) for name, net, _ in sa_aggregate(psrc.rows, months)},
+    }

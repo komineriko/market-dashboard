@@ -1567,6 +1567,42 @@ function render(d){
     }
   }
 
+  /* ---- 参加者別ネット建玉 ---- */
+  if (d.participants && d.participants.available){
+    const p = d.participants;
+    app.appendChild(section('取引参加者別ネット建玉（週次）'));
+    app.appendChild($('p','note',
+      `${p.as_of} 時点（本レポートの基準日の ${p.lag_days}日前）／対象 ${(p.months||[]).join('・')}／` +
+      `合計 ${p.total}枚（ラージ換算）` +
+      (p.prev_as_of && p.prev_as_of !== '—' ? `／前週は ${p.prev_as_of} 時点` : '')));
+    const warn = $('div','card disc');
+    warn.appendChild($('div','t','⚠ このデータで分かること・分からないこと'));
+    warn.appendChild($('div','b',
+      '証券会社単位の建玉であり、その先の顧客が誰かは分からない（自己玉と顧客玉が混在する）。' +
+      '売超・買超それぞれ上位15社のみで、市場全体の集計ではない。' +
+      '週次公表のため、日次のレポートに対して常に時間差がある。' +
+      'ミニは1/10、マイクロは1/100でラージ換算している。'));
+    app.appendChild(warn);
+    if (p.stale){
+      const st = $('div','card disc');
+      st.appendChild($('div','t',`⚠ ${p.lag_days}日前のデータ`));
+      st.appendChild($('div','b',
+        'この間の値動きで誰がどう動いたかは、次回の公表を待つまで検証できない。'));
+      app.appendChild(st);
+    }
+    app.appendChild(table([
+      {key:'name', label:'参加者'},
+      {key:'side', label:'向き'},
+      {key:'before', label:'前週', sign:true},
+      {key:'net', label:'ネット建玉', sign:true},
+      {key:'change', label:'前週比', sign:true},
+      {key:'breakdown', label:'商品別の内訳', txt:true},
+    ], p.rows));
+  } else if (d.participants){
+    app.appendChild(section('取引参加者別ネット建玉（週次）'));
+    app.appendChild($('div','empty', d.participants.note || '取得できませんでした。'));
+  }
+
   /* ---- イベント ---- */
   if (d.events && d.events.length){
     app.appendChild(section('SQまでの日程'));

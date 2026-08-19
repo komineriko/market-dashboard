@@ -1017,3 +1017,195 @@ def fetch_daily_report_chains(target: Optional[date] = None,
             raise FetchError(f"日報ZIPに株価指数オプションのPDFがありません: {zf.namelist()}")
         pdf_bytes = zf.read(name)
     return d, parse_siop_pdf(pdf_bytes, months), name
+
+
+# ---------------------------------------------------------------------------
+# 取引参加者別 建玉残高（週次）
+# ---------------------------------------------------------------------------
+#
+# JPXが金曜日ベースで公表する「取引参加者別建玉残高」。
+# 元レポートの §5-4(C) 先物ネット建玉はこのデータ。
+#
+# 指数先物ファイル（indexfut_oi_by_tp.xlsx）の並び（2026-08 時点で確認）:
+#
+#   ＜日経225先物＞
+#    |  | （売超参加者） |  |  | （買超参加者） | ... （右にもう1ブロック）
+#    1 | 2026年09月限月 | 12724 | ＨＳＢＣ証券 | 33442 | 12400 | 野村証券 | 35374 | ...
+#
+# 1データ行は [順位, 限月, 売超コード, 売超名, 売超枚数, 買超コード, 買超名, 買超枚数]
+# の8列を1ブロックとし、これが横に複数並ぶ。見出し「（売超参加者）」の列位置は
+# 先物ファイルとオプションファイルで1列ずれるため、見出しの位置には依存させず、
+# 「順位（1〜15）＋限月」の並びでブロックの開始を見つける。
+#
+# 注意: 売超・買超それぞれ上位15社のみ。16位以下は載らないので、
+# ここから作るネット建玉は市場全体の集計ではなく上位の抜粋である。
+
+PARTICIPANT_YEARLIST = "/automation/markets/derivatives/open-interest/json/open_interest_yearlist.json"
+PRODUCT_MARK_RE = re.compile(r"^[＜<]\s*(.+?)\s*[＞>]$")
+MONTH_LABEL_RE = re.compile(r"(20\d{2})\s*年\s*(\d{1,2})\s*月限")
+SELL_HEADER = "売超"
+BUY_HEADER = "買超"
+
+# ラージ換算の係数。ミニは1/10、マイクロは1/100。
+PRODUCT_WEIGHTS = {
+    "日経225先物": 1.0,
+    "日経225mini": 0.1,
+    "日経225ミニ": 0.1,
+    "日経225マイクロ先物": 0.01,
+    "TOPIX先物": 1.0,
+    "ミニTOPIX先物": 0.1,
+}
+
+
+@dataclass
+class ParticipantRow:
+    product: str
+    month: str            # "26-09"
+    name: str
+    code: str
+    sell: float = 0.0     # 売超建玉（枚）
+    buy: float = 0.0      # 買超建玉（枚）
+
+    @property
+    def net(self) -> float:
+        """買超 − 売超。正がロング、負がショート。"""
+        return self.buy - self.sell
+
+
+def _is_rank(value: str) -> bool:
+    v = _num(value)
+    return v is not None and float(v).is_integer() and 1 <= v <= 15
+
+
+def _is_block_key(value: str) -> bool:
+    """ブロックの2列目。先物なら限月、オプションなら行使価格。"""
+    s = str(value).strip()
+    if not s:
+        return False
+    return bool(MONTH_LABEL_RE.search(s)) or _num(s) is not None
+
+
+def _month_from_label(value: str) -> Optional[str]:
+    m = MONTH_LABEL_RE.search(str(value))
+    if not m:
+        return None
+    return f"{int(m.group(1)) % 100:02d}-{int(m.group(2)):02d}"
+
+
+def parse_participant_rows(rows: Sequence[Sequence[str]]) -> List[ParticipantRow]:
+    """指数先物の参加者別建玉残高シートから、商品・限月・参加者ごとの売超/買超を取り出す。"""
+    out: Dict[Tuple[str, str, str], ParticipantRow] = {}
+    product = ""
+
+    for raw in rows:
+        cells = ["" if c is None else str(c).strip() for c in raw]
+        for c in cells:
+            m = PRODUCT_MARK_RE.match(c)
+            if m:
+                product = m.group(1)
+                break
+        if not product:
+            continue
+
+        i = 0
+        while i + 7 < len(cells):
+            if not (_is_rank(cells[i]) and _is_block_key(cells[i + 1])):
+                i += 1
+                continue
+            month = _month_from_label(cells[i + 1])
+            if month:
+                for code, name, qty, side in (
+                        (cells[i + 2], cells[i + 3], cells[i + 4], SELL_HEADER),
+                        (cells[i + 5], cells[i + 6], cells[i + 7], BUY_HEADER)):
+                    amount = _num(qty)
+                    if not name or amount is None or amount <= 0:
+                        continue
+                    key = (product, month, name)
+                    row = out.get(key) or ParticipantRow(product=product, month=month,
+                                                         name=name, code=code)
+                    if side == SELL_HEADER:
+                        row.sell += amount
+                    else:
+                        row.buy += amount
+                    out[key] = row
+            i += 8
+
+    return list(out.values())
+
+
+def aggregate_participant_net(rows: Sequence[ParticipantRow],
+                             months: Optional[Sequence[str]] = None
+                             ) -> List[Tuple[str, float, Dict[str, float]]]:
+    """
+    参加者ごとにラージ換算のネット建玉を集計する。
+    戻り値は (参加者名, ネット, 商品別の内訳) をネットの大きい順に並べたもの。
+    """
+    net: Dict[str, float] = {}
+    breakdown: Dict[str, Dict[str, float]] = {}
+    for r in rows:
+        if months and r.month not in months:
+            continue
+        w = PRODUCT_WEIGHTS.get(r.product)
+        if w is None:
+            # 未知の商品はラージ扱いにせず、係数が分からないものとして除外する
+            continue
+        net[r.name] = net.get(r.name, 0.0) + r.net * w
+        breakdown.setdefault(r.name, {})
+        breakdown[r.name][r.product] = breakdown[r.name].get(r.product, 0.0) + r.net * w
+    out = [(name, value, breakdown[name]) for name, value in net.items()]
+    out.sort(key=lambda x: x[1], reverse=True)
+    return out
+
+
+@dataclass
+class ParticipantSource:
+    as_of: date
+    rows: List[ParticipantRow]
+    origin: str
+
+
+def latest_participant_file(target: Optional[date] = None) -> Tuple[date, str]:
+    """週次の指数先物 参加者別建玉残高ファイルのうち、公表済みの最新を返す。"""
+    import json as _json
+    raw = http_get(JPX_BASE + PARTICIPANT_YEARLIST)
+    years = _json.loads(raw.decode("utf-8", errors="replace")).get("TableDatas", [])
+    for entry in years:
+        path = entry.get("Jsonfile")
+        if not path:
+            continue
+        data = _json.loads(http_get(JPX_BASE + path).decode("utf-8", errors="replace"))
+        best: List[Tuple[date, str]] = []
+        for row in data.get("TableDatas", []):
+            td = str(row.get("TradeDate") or "")
+            fut = row.get("IndexFutures")
+            if len(td) != 8 or not td.isdigit() or not fut:
+                continue
+            try:
+                d = datetime.strptime(td, "%Y%m%d").date()
+            except ValueError:
+                continue
+            if target and d > target:
+                continue
+            best.append((d, JPX_BASE + fut if fut.startswith("/") else fut))
+        if best:
+            best.sort(key=lambda x: x[0], reverse=True)
+            return best[0]
+    raise FetchError("参加者別建玉残高の公表一覧を取得できませんでした。")
+
+
+def fetch_participant_oi(target: Optional[date] = None) -> Optional[ParticipantSource]:
+    """
+    参加者別建玉残高（週次）を取得する。
+    取れなくてもレポート全体は成立するので、失敗時は None を返して開示に回す。
+    """
+    try:
+        d, url = latest_participant_file(target)
+        sheets = sheets_from_excel(http_get(url))
+    except (FetchError, ValueError, KeyError):
+        return None
+    rows: List[ParticipantRow] = []
+    for _name, sheet in sheets:
+        rows.extend(parse_participant_rows(sheet))
+    if not rows:
+        return None
+    return ParticipantSource(as_of=d, rows=rows, origin=url.rsplit("/", 1)[-1])
