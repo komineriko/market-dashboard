@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQ予測レポート 日経225オプション</title>
+<style>
+  :root{
+    --bg:#0c0f16; --bg-elevated:#12161f; --card:#161b26; --card-border:#232937;
+    --text:#e7eaf0; --text-dim:#8993a4; --text-faint:#5b6472;
+    --up:#2fd480; --up-bg:rgba(47,212,128,0.14);
+    --down:#ff5d6c; --down-bg:rgba(255,93,108,0.14);
+    --accent:#4d8dff; --accent-soft:rgba(77,141,255,0.15);
+    --warn:#f5b942; --warn-bg:rgba(245,185,66,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:1080px;margin:0 auto;padding:20px 16px 96px;}
+  header.top{border-bottom:1px solid var(--card-border);padding-bottom:14px;margin-bottom:20px;}
+  header.top h1{font-size:19px;font-weight:700;margin:0 0 8px;letter-spacing:.02em;}
+  header.top .line{font-size:12.5px;color:var(--text-dim);line-height:1.7;}
+  header.top .gen{font-size:11.5px;color:var(--text-faint);margin-top:6px;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;
+    background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:1px;}
+  .badge.warn{background:var(--warn-bg);color:var(--warn);}
+
+  h2{font-size:15px;margin:34px 0 12px;padding-left:9px;border-left:3px solid var(--accent);}
+  h3{font-size:13px;margin:22px 0 8px;color:var(--text-dim);font-weight:600;}
+  p.note{font-size:12.5px;color:var(--text-dim);line-height:1.8;margin:8px 0;}
+
+  .card{background:var(--card);border:1px solid var(--card-border);border-radius:10px;
+    padding:14px 16px;margin-bottom:12px;}
+  .disc{border-left:3px solid var(--warn);background:var(--warn-bg);}
+  .disc.ok{border-left-color:var(--up);background:var(--up-bg);}
+  .disc .t{font-size:13px;font-weight:600;margin-bottom:6px;}
+  .disc .b{font-size:12.5px;color:var(--text-dim);line-height:1.8;}
+
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:14px;}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:min-content;}
+  th,td{padding:7px 10px;text-align:right;white-space:nowrap;
+    border-bottom:1px solid var(--card-border);}
+  th{color:var(--text-faint);font-weight:600;font-size:11.5px;text-align:right;
+    background:var(--bg-elevated);position:sticky;top:0;}
+  th:first-child,td:first-child{text-align:left;}
+  td.txt,th.txt{text-align:left;white-space:normal;min-width:200px;color:var(--text-dim);}
+  tr:last-child td{border-bottom:none;}
+  .up{color:var(--up);} .down{color:var(--down);} .dim{color:var(--text-faint);}
+  .star{color:var(--warn);}
+
+  .kv{display:grid;grid-template-columns:132px 1fr;gap:2px 14px;font-size:13px;line-height:1.85;}
+  .kv .k{color:var(--text-faint);font-size:12px;padding-top:2px;}
+  .kv .v{color:var(--text);}
+
+  .gex{font-size:12px;}
+  .gex .row{display:grid;grid-template-columns:64px 1fr 88px;align-items:center;gap:8px;
+    padding:2px 0;}
+  .gex .lv{color:var(--text-dim);text-align:right;}
+  .gex .bar{position:relative;height:14px;background:var(--bg-elevated);border-radius:3px;}
+  .gex .bar i{position:absolute;top:0;bottom:0;border-radius:3px;}
+  .gex .bar i.pos{background:var(--up);} .gex .bar i.neg{background:var(--down);}
+  .gex .bar .mid{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--text-faint);}
+  .gex .val{text-align:right;color:var(--text-dim);}
+  .gex .row.flip .lv{color:var(--warn);font-weight:700;}
+
+  ol.limits{font-size:12.5px;color:var(--text-dim);line-height:1.9;padding-left:22px;margin:6px 0;}
+  ol.limits li{margin-bottom:5px;}
+  .watch li{margin-bottom:12px;}
+  .watch .lbl{font-size:13px;color:var(--text);font-weight:600;}
+  .watch .rule{font-size:12.5px;color:var(--text-dim);line-height:1.8;margin-top:3px;}
+  .empty{font-size:12.5px;color:var(--text-faint);padding:10px 0;}
+  footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--card-border);
+    font-size:11.5px;color:var(--text-faint);line-height:1.9;}
+  footer a{color:var(--accent);text-decoration:none;}
+  @media (max-width:640px){
+    .kv{grid-template-columns:1fr;gap:0 0;}
+    .kv .k{padding-top:8px;}
+    .gex .row{grid-template-columns:56px 1fr 74px;}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script>
+/* ===AUTO_UPDATE_DATA_START=== */
+const SQ_DATA = null;
+/* ===AUTO_UPDATE_DATA_END=== */
+
+const $ = (tag, cls, text) => {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (text !== undefined && text !== null) el.textContent = text;
+  return el;
+};
+
+/* 増減の符号で色を付ける。数値以外はそのまま返す。 */
+function signClass(v){
+  if (typeof v !== 'string') return '';
+  if (/^\+/.test(v) && !/^\+0(\.0+)?$/.test(v)) return 'up';
+  if (/^-/.test(v) && !/^-0(\.0+)?$/.test(v)) return 'down';
+  return '';
+}
+
+function table(cols, rows){
+  const wrap = $('div','tw');
+  const t = $('table');
+  const thead = $('thead'), tr = $('tr');
+  cols.forEach(c => {
+    const th = $('th', c.txt ? 'txt' : '', c.label);
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr); t.appendChild(thead);
+  const tb = $('tbody');
+  rows.forEach(r => {
+    const row = $('tr');
+    cols.forEach(c => {
+      const raw = r[c.key];
+      const td = $('td', c.txt ? 'txt' : '', raw === undefined || raw === null ? '—' : String(raw));
+      if (c.sign){
+        const sc = signClass(String(raw));
+        if (sc) td.classList.add(sc);
+      }
+      if (c.dim) td.classList.add('dim');
+      row.appendChild(td);
+    });
+    tb.appendChild(row);
+  });
+  t.appendChild(tb); wrap.appendChild(t);
+  return wrap;
+}
+
+function section(title){ return $('h2', null, title); }
+
+function kv(pairs){
+  const box = $('div','card');
+  const grid = $('div','kv');
+  pairs.forEach(([k,v]) => {
+    if (v === undefined || v === null || v === '') return;
+    grid.appendChild($('div','k',k));
+    grid.appendChild($('div','v',v));
+  });
+  box.appendChild(grid);
+  return box;
+}
+
+function gexChart(profile, flipLabel){
+  const box = $('div','card');
+  const wrap = $('div','gex');
+  const vals = profile.map(p => Math.abs(parseFloat(String(p.gex).replace(/[+,]/g,''))) || 0);
+  const max = Math.max(...vals, 1);
+  profile.forEach(p => {
+    const v = parseFloat(String(p.gex).replace(/[+,]/g,'')) || 0;
+    const row = $('div','row' + (p.level === flipLabel ? ' flip' : ''));
+    row.appendChild($('div','lv', p.level));
+    const bar = $('div','bar');
+    const i = $('i', v >= 0 ? 'pos' : 'neg');
+    const w = Math.abs(v)/max*50;
+    if (v >= 0){ i.style.left = '50%'; i.style.width = w + '%'; }
+    else { i.style.right = '50%'; i.style.width = w + '%'; }
+    bar.appendChild(i);
+    const mid = $('div','mid'); mid.style.left = '50%'; bar.appendChild(mid);
+    row.appendChild(bar);
+    row.appendChild($('div','val', p.gex + '億'));
+    wrap.appendChild(row);
+  });
+  box.appendChild(wrap);
+  return box;
+}
+
+function render(d){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  if (!d){
+    app.appendChild($('h1',null,'SQ予測レポート'));
+    app.appendChild($('p','note','まだデータがありません。update_sq_report.py を実行すると生成されます。'));
+    return;
+  }
+  const m = d.meta;
+
+  /* ---- ヘッダ ---- */
+  const head = $('header','top');
+  const h1 = $('h1', null, m.title);
+  if (m.is_major_sq) h1.appendChild($('span','badge','メジャーSQ'));
+  head.appendChild(h1);
+  head.appendChild($('div','line',
+    `基準日 ${m.base_date}（${m.base_weekday}） ／ SQ ${m.sq_date}（${m.sq_weekday}） ／ ` +
+    `残 ${m.calendar_days}暦日・${m.business_days}営業日 ／ フェーズ：${m.phase}`));
+  head.appendChild($('div','gen',
+    `生成 ${m.generated_at}　データ: ${m.origin || '—'}` +
+    (m.has_prev ? '' : '　※前日スナップショットが無いため、前日比・答え合わせは次回から')));
+  app.appendChild(head);
+
+  /* ---- 結論 ---- */
+  app.appendChild(section('【結論】'));
+  const c = d.conclusion || {};
+  app.appendChild(kv([
+    ['本日の相場', c.market_today],
+    ['方向判定', c.direction],
+    ['SQ参考帯', c.sq_band],
+    ['攻防レンジ', c.battle_range],
+    ['本日の性格', c.character],
+    ['最重要の観察', c.key_observation],
+    ['次の分岐', c.next_branch],
+  ]));
+
+  /* ---- データ品質の開示 ---- */
+  if (d.disclosures && d.disclosures.length){
+    app.appendChild(section('データ品質の開示'));
+    d.disclosures.forEach(x => {
+      const box = $('div','card disc' + (x.level === 'ok' ? ' ok' : ''));
+      box.appendChild($('div','t', (x.level === 'ok' ? '' : '⚠ ') + x.title));
+      box.appendChild($('div','b', x.body));
+      app.appendChild(box);
+    });
+  }
+
+  /* ---- SQ参考帯 ---- */
+  if (d.sq_band){
+    const b = d.sq_band;
+    app.appendChild(section('SQ値の想定レンジ（予測ではない）'));
+    app.appendChild(kv([
+      ['中心（フォワード）', b.center],
+      ['1σ', b.sigma + '円'],
+      ['50%帯', `${b.band50[0]} 〜 ${b.band50[1]}`],
+      ['80%帯', `${b.band80[0]} 〜 ${b.band80[1]}`],
+      ['Condorに収まる確率', b.prob_in_condor + '%'],
+      ['プレミアム法 中央値', b.median_premium],
+      ['IV法 中央値', b.median_iv],
+      ['手法クロスチェック', b.divergence + '円' + (b.reliable ? '（目安内）' : '（⚠ 目安超過）')],
+      ['パリティ整合', (b.parity||[]).map(p => `K=${p.strike} → ${p.forward}`).join(' ／ ')],
+    ]));
+    app.appendChild($('p','note',
+      `残 ${m.business_days}営業日・1σ ${b.sigma}円では、SQ値の予測は原理的に不可能。` +
+      `中心点 ${b.center} は参考値であって予測ではない。`));
+  }
+
+  /* ---- 指標早見表 ---- */
+  if (d.summary_table && d.summary_table.length){
+    app.appendChild(section('指標早見表'));
+    app.appendChild(table([
+      {key:'label', label:'指標'},
+      {key:'prev', label:'前日'},
+      {key:'today', label:'当日'},
+      {key:'change', label:'変化', sign:true},
+      {key:'note', label:'読み方', txt:true},
+    ], d.summary_table));
+  }
+
+  /* ---- スキュー ---- */
+  if (d.skew){
+    app.appendChild(section('スキュー構造（恐怖ゲージ）'));
+    app.appendChild($('p','note',
+      '現値が動くと同じ行使価格でもモネネスが変わるため、固定行使価格のIV前日比は恐怖の指標に使えない。' +
+      '判定は下の正規化された量で行う。'));
+    if (d.skew.rr_history && d.skew.rr_history.length){
+      app.appendChild($('h3',null,'RR25 / BF25 / ATM IV の推移'));
+      app.appendChild(table([
+        {key:'date', label:'日付'},
+        {key:'rr25', label:'RR25', sign:true},
+        {key:'bf25', label:'BF25', sign:true},
+        {key:'atm_iv', label:'ATM IV'},
+        {key:'put25_iv', label:'25dPut IV'},
+        {key:'call25_iv', label:'25dCall IV'},
+      ], d.skew.rr_history));
+    }
+    if (d.skew.moneyness && d.skew.moneyness.length){
+      app.appendChild($('h3',null,'固定モネネス（K/F）でのIV'));
+      app.appendChild(table([
+        {key:'m', label:'m = K/F'},
+        {key:'strike', label:'行使価格'},
+        {key:'iv', label:'IV'},
+      ], d.skew.moneyness));
+    }
+    if (d.skew.delta && d.skew.delta.length){
+      app.appendChild($('h3',null,'固定デルタでのIV'));
+      app.appendChild(table([
+        {key:'label', label:'デルタ'},
+        {key:'strike', label:'行使価格'},
+        {key:'iv', label:'IV'},
+      ], d.skew.delta));
+    }
+  }
+
+  /* ---- PUTブック ---- */
+  if (d.put_book && d.put_book.summary){
+    const pb = d.put_book;
+    app.appendChild(section('PUTブックの実効ヘッジ量'));
+    app.appendChild(kv([
+      ['PUT建玉', pb.summary.oi + '枚'],
+      ['実効デルタ', pb.summary.effective_delta + '枚'],
+      ['ベガ', pb.summary.vega_oku + '億円/1pt'],
+      ['理論プレミアム', pb.summary.premium_oku + '億円'],
+      ['20円未満のゴミ玉', `${pb.summary.junk_oi}枚（${pb.summary.junk_ratio}）`],
+    ]));
+    if (pb.decomposition){
+      const dc = pb.decomposition;
+      app.appendChild($('h3',null,'★実効デルタ増減の3分解'));
+      app.appendChild(kv([
+        ['増減の合計', dc.total + '枚'],
+        ['① ポジション要因', dc.position + '枚相当（恒久的。実際に建てられた保険）'],
+        ['② 現値移動＋時間経過', dc.spot_and_time + '枚相当（相場が戻れば自動的に元へ）'],
+        ['判定', dc.verdict],
+      ]));
+      if (dc.rows && dc.rows.length){
+        app.appendChild($('h3',null,'ポジション要因の内訳（実効デルタ寄与の大きい順）'));
+        app.appendChild(table([
+          {key:'strike', label:'行使価格'},
+          {key:'prev', label:'前日'},
+          {key:'today', label:'当日'},
+          {key:'diff', label:'差', sign:true},
+          {key:'delta', label:'当日デルタ'},
+          {key:'contribution', label:'実効δ寄与', sign:true},
+        ], dc.rows));
+      }
+    }
+    if (pb.buckets && pb.buckets.length){
+      app.appendChild($('h3',null,'モネネスバケット別'));
+      app.appendChild($('p','note',
+        'バケットの境界は現値と一緒に動くため、前日比の増減には再分類が混じる。' +
+        '「今どこに効き目があるか」を示す表であって「どこに新規で積まれたか」ではない。'));
+      app.appendChild(table([
+        {key:'label', label:'バケット'},
+        {key:'oi', label:'建玉'},
+        {key:'effective_delta', label:'実効デルタ'},
+        {key:'share', label:'δ寄与率'},
+      ], pb.buckets));
+    }
+  }
+
+  /* ---- 前日比OI ---- */
+  if (d.oi_compare && d.oi_compare.available){
+    const oc = d.oi_compare;
+    app.appendChild(section('前日比OI（共通行使価格ベース）'));
+    app.appendChild($('p','note',
+      `共通窓：${oc.window}。捕捉窓の両端は日々動くので、積集合だけで前日比を取る。`));
+    app.appendChild(table([
+      {key:'label', label:'指標'},
+      {key:'prev', label:'前日'},
+      {key:'today', label:'当日'},
+      {key:'change', label:'差', sign:true},
+    ], oc.totals));
+    if (oc.put_changes && oc.put_changes.length){
+      app.appendChild($('h3',null,'PUT 建玉の変化（100枚以上）'));
+      app.appendChild(table([
+        {key:'strike', label:'行使価格'}, {key:'prev', label:'前日'},
+        {key:'today', label:'当日'}, {key:'diff', label:'差', sign:true},
+      ], oc.put_changes));
+    }
+    if (oc.call_changes && oc.call_changes.length){
+      app.appendChild($('h3',null,'CALL 建玉の変化（100枚以上）'));
+      app.appendChild(table([
+        {key:'strike', label:'行使価格'}, {key:'prev', label:'前日'},
+        {key:'today', label:'当日'}, {key:'diff', label:'差', sign:true},
+      ], oc.call_changes));
+    } else {
+      app.appendChild($('h3',null,'CALL 建玉の変化（100枚以上）'));
+      app.appendChild($('div','empty','100枚以上動いた行使価格は無し。'));
+    }
+    ['put','call'].forEach(side => {
+      const rows = oc['bucket_' + side];
+      if (rows && rows.length){
+        app.appendChild($('h3',null,`±375円バケットの変化（${side.toUpperCase()}・現値近傍）`));
+        app.appendChild(table([
+          {key:'center', label:'中心'}, {key:'prev', label:'前日'},
+          {key:'today', label:'当日'}, {key:'diff', label:'差', sign:true},
+        ], rows));
+      }
+    });
+  }
+
+  /* ---- 壁・GEX ---- */
+  if (d.walls){
+    const w = d.walls;
+    app.appendChild(section('壁マップとGEXプロファイル'));
+    if (w.condor){
+      app.appendChild(kv([
+        ['想定レンジ（壁）', `${w.condor.lower} 〜 ${w.condor.upper}（幅 ${w.condor.width}円）`],
+        ['GEXフリップ', w.gex_flip],
+        ['GEXレジーム', w.gex_regime],
+        ['max_pain', w.max_pain ? `${w.max_pain.strike}（支払 ${w.max_pain.payout_oku}億円・傾き ${w.max_pain.slope}${w.max_pain.negligible ? '＝引力は無視可' : ''}）` : null],
+      ]));
+    }
+    app.appendChild($('p','note',
+      '名目金額は現値との距離で機械的に動く。水準の絶対値としてのみ使い、前日比では判断しない。'));
+    if (w.upper && w.upper.length){
+      app.appendChild($('h3',null,'上方の壁（OTM CALL）'));
+      app.appendChild(table([
+        {key:'strike', label:'行使価格'}, {key:'oi', label:'建玉(±375)'},
+        {key:'price', label:'現在値'}, {key:'nominal_oku', label:'名目(億円)'},
+        {key:'score', label:'壁スコア'},
+      ], w.upper));
+    }
+    if (w.lower && w.lower.length){
+      app.appendChild($('h3',null,'下方の壁（OTM PUT）'));
+      app.appendChild(table([
+        {key:'strike', label:'行使価格'}, {key:'oi', label:'建玉(±375)'},
+        {key:'price', label:'現在値'}, {key:'nominal_oku', label:'名目(億円)'},
+        {key:'score', label:'壁スコア'},
+      ], w.lower));
+    }
+    if (w.gex_profile && w.gex_profile.length){
+      app.appendChild($('h3',null,'ネットGEXプロファイル'));
+      app.appendChild(gexChart(w.gex_profile, w.gex_flip));
+    }
+    if (w.pins && w.pins.length){
+      app.appendChild($('h3',null,'ピン候補（名目金額ベース・参考）'));
+      app.appendChild(table([
+        {key:'strike', label:'行使価格'}, {key:'nominal_oku', label:'名目(億円)'},
+        {key:'oi', label:'合計建玉'},
+      ], w.pins));
+    }
+  }
+
+  /* ---- 深部PUT ---- */
+  if (d.deep_put && d.deep_put.length){
+    app.appendChild(section('PUT建玉の行使価格別推移（枚数と効き目の乖離）'));
+    app.appendChild($('p','note',
+      '「どこに何枚積まれたか」ではなく「その枚数が実際にいくらのデルタを持つか」で見る。'));
+    app.appendChild(table([
+      {key:'strike', label:'行使価格'}, {key:'prev', label:'前日'},
+      {key:'today', label:'当日'}, {key:'diff', label:'差', sign:true},
+      {key:'price', label:'現在値'}, {key:'moneyness', label:'K/F'},
+      {key:'delta', label:'デルタ'}, {key:'contribution', label:'実効δ寄与', sign:true},
+    ], d.deep_put));
+  }
+
+  /* ---- 中期レンジ ---- */
+  if (d.midterm){
+    const mt = d.midterm;
+    app.appendChild(section(`中期レンジ（${(mt.months||[]).join('＋')} 合成）`));
+    app.appendChild(kv([
+      ['天井', mt.ceiling ? `${mt.ceiling.strike}（net ${mt.ceiling.net}）` : null],
+      ['床', mt.floor ? `${mt.floor.strike}（net ${mt.floor.net}）` : null],
+      ['現値 F', mt.forward],
+    ]));
+    if (mt.per_month && mt.per_month.length){
+      app.appendChild($('h3',null,'限月別合計'));
+      app.appendChild($('p','note','限月別合計は捕捉窓の影響を受ける。前日比の判断には共通窓の表を使う。'));
+      app.appendChild(table([
+        {key:'month', label:'限月'}, {key:'call', label:'CALL'},
+        {key:'put', label:'PUT'}, {key:'pcr', label:'PCR'},
+      ], mt.per_month));
+    }
+    if (mt.upper && mt.upper.length){
+      app.appendChild($('h3',null,'ネット建玉（CALL − PUT）の上位'));
+      app.appendChild(table([
+        {key:'strike', label:'上方（CALL優勢）'}, {key:'net', label:'net', sign:true},
+      ], mt.upper));
+      app.appendChild(table([
+        {key:'strike', label:'下方（PUT優勢）'}, {key:'net', label:'net', sign:true},
+      ], mt.lower));
+    }
+  }
+
+  /* ---- イベント ---- */
+  if (d.events && d.events.length){
+    app.appendChild(section('SQまでの日程'));
+    app.appendChild($('p','note','これは日程表であって、値動きの原因ではない。'));
+    app.appendChild(table([
+      {key:'date', label:'日付'}, {key:'name', label:'イベント', txt:true},
+      {key:'note', label:'備考', txt:true}, {key:'after_sq', label:''},
+    ], d.events));
+  }
+
+  /* ---- 監視ポイント ---- */
+  if (d.watch && d.watch.length){
+    app.appendChild(section('明日以降の監視ポイント'));
+    app.appendChild($('p','note',
+      '閾値は現値移動に汚染されない正規化された量で置く。ここに載せた項目は翌日そのまま自動で答え合わせされる。'));
+    const box = $('div','card');
+    const ol = $('ol','watch');
+    d.watch.forEach(x => {
+      const li = $('li');
+      const lbl = $('div','lbl', (x.star ? '★ ' : '') + x.label);
+      if (x.star) lbl.classList.add('star');
+      li.appendChild(lbl);
+      li.appendChild($('div','rule', x.rule));
+      ol.appendChild(li);
+    });
+    box.appendChild(ol);
+    app.appendChild(box);
+  }
+
+  /* ---- 答え合わせ ---- */
+  app.appendChild(section('前回比・答え合わせ'));
+  if (d.answer_check && d.answer_check.length){
+    app.appendChild(table([
+      {key:'label', label:'前日に設定した監視項目', txt:true},
+      {key:'before', label:'前日'}, {key:'now', label:'当日'},
+      {key:'diff', label:'変化', sign:true},
+      {key:'verdict', label:'判定', txt:true},
+    ], d.answer_check));
+  } else {
+    app.appendChild($('div','empty',
+      '前日の監視ポイントがまだ無いため、答え合わせは次回の更新から表示されます。'));
+  }
+
+  /* ---- 前提と限界 ---- */
+  if (d.limits && d.limits.length){
+    app.appendChild(section('前提と限界'));
+    const box = $('div','card');
+    const ol = $('ol','limits');
+    d.limits.forEach(x => ol.appendChild($('li',null,x)));
+    box.appendChild(ol);
+    app.appendChild(box);
+  }
+
+  const f = $('footer');
+  f.appendChild($('div',null,
+    '本レポートは日経225オプションの建玉スナップショットに基づく構造分析であり、投資勧誘・売買推奨ではありません。'));
+  if (m.sources && m.sources.length){
+    f.appendChild($('div',null,'出所: ' + m.sources.join(' ／ ')));
+  }
+  const link = $('div');
+  const a = $('a',null,'米国株マーケットダッシュボードへ');
+  a.href = 'index.html';
+  link.appendChild(a);
+  f.appendChild(link);
+  app.appendChild(f);
+}
+
+render(SQ_DATA);
+</script>
+</body>
+</html>

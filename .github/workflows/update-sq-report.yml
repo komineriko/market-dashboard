@@ -1,0 +1,66 @@
+name: Update SQ report
+
+on:
+  schedule:
+    # 月〜金 21:00 JST = 12:00 UTC（JPXの日次相場情報が出そろったあと）
+    - cron: "0 12 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "基準日 (YYYY-MM-DD)。空なら板データの日付"
+        required: false
+      nikkei_vi:
+        description: "日経VI（引け直前の水準）。空なら未取得として開示"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-sq-report
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests yfinance openpyxl
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build SQ report
+        env:
+          SQ_NIKKEI_VI: ${{ github.event.inputs.nikkei_vi }}
+        run: |
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            python update_sq_report.py --date "${{ github.event.inputs.date }}"
+          else
+            python update_sq_report.py
+          fi
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "market-dashboard-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add sq_report.html sq_snapshots sq_history.json
+          if git diff --cached --quiet; then
+            echo "変更なし。コミットをスキップします。"
+          else
+            git commit -m "chore: SQレポート自動更新 $(date -u +'%Y-%m-%d %H:%M UTC')"
+            for i in 1 2 3 4; do
+              git push && break
+              echo "push に失敗。$((2**i))秒待って再試行します。"
+              sleep $((2**i))
+              git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            done
+          fi
