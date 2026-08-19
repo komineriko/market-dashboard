@@ -797,6 +797,12 @@ PUT_MARKERS = ("プットオプション", "PutOptions", "Put Options")
 # タイトル行は各ページに繰り返されるため、ページごとに状態を初期化して拾い直す。
 NIKKEI225_OPTION_TITLE = "日経225オプション"
 
+# 日報には「競争売買市場」と「J-NET市場」の表が入っている。
+# J-NET市場の表は 始値・高値・安値・終値・取引高・取引金額 しか無く、
+# 清算価格も建玉も列が無い。区別せずに読むと取引金額（円）を建玉として拾う。
+AUCTION_MARKERS = ("競争売買市場", "AuctionMarket", "Auction Market")
+JNET_MARKERS = ("J-NET", "JNET", "J‐NET", "Ｊ－ＮＥＴ")
+
 
 def _siop_number(token: str) -> Optional[float]:
     if token in MISSING_TOKENS:
@@ -827,6 +833,7 @@ class SiopStats:
     """PDF解析の内訳。列ずれを検出するために残す。"""
     pages: int = 0
     pages_nikkei: int = 0
+    pages_jnet: int = 0
     records: int = 0
     accepted: int = 0
     rejected_shape: int = 0
@@ -855,11 +862,15 @@ def parse_siop_pages(pages: Iterable[str],
         st.pages += 1
         if not text:
             continue
-        # 商品はページごとに判定し直す。タイトル行が無いページは対象外として扱う。
+        # 商品と市場はページごとに判定し直す。見出しは各ページに繰り返される。
         in_nikkei225 = any(line.strip().startswith(NIKKEI225_OPTION_TITLE)
                            for line in text.splitlines())
         if in_nikkei225:
             st.pages_nikkei += 1
+        is_jnet = any(mk in text for mk in JNET_MARKERS)
+        is_auction = (not is_jnet) and any(mk in text for mk in AUCTION_MARKERS)
+        if in_nikkei225 and is_jnet:
+            st.pages_jnet += 1
 
         for raw_line in text.splitlines():
             line = raw_line.strip()
@@ -867,7 +878,7 @@ def parse_siop_pages(pages: Iterable[str],
                 is_call = True
             elif any(m in line for m in PUT_MARKERS):
                 is_call = False
-            if not in_nikkei225 or is_call is None:
+            if not in_nikkei225 or not is_auction or is_call is None:
                 continue
 
             for m, segment in _split_siop_records(line):
@@ -930,7 +941,8 @@ def parse_siop_pdf(pdf_bytes: bytes,
     st = SiopStats()
     chains = parse_siop_pages(pages, months, stats=st)
     if os.environ.get("SQ_DEBUG_PDF"):
-        print(f"[PDF] ページ {st.pages}（日経225 {st.pages_nikkei}） / "
+        print(f"[PDF] ページ {st.pages}（日経225 {st.pages_nikkei}"
+              f" / うちJ-NET {st.pages_jnet}） / "
               f"レコード {st.records} / 採用 {st.accepted} / "
               f"形が合わず除外 {st.rejected_shape} / 建玉が過大で除外 {st.rejected_oi}",
               file=sys.stderr)

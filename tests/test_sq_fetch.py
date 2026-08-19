@@ -331,6 +331,20 @@ SIOP_MINI_PAGE = "\n".join([
 ])
 
 
+# J-NET市場の表。清算価格も建玉も列が無く、末尾は 取引高・取引金額。
+SIOP_JNET_PAGE = "\n".join([
+    "※日経225オプション、日経225ミニオプションの場合、表示単位「Ｐ」は「円」に置き換え",
+    "日経225オプション ※PriceforNikkei225Options,Nikkei225miniOptions:JPY,Others:points",
+    "Nikkei225Options",
+    "J-NET市場 J-NETMarket 2026年8月18日(火曜日)",
+    "プットオプション PutOptions",
+    "202609 09.10 48,000 131218018 27.0100 47.3300 27.0100 47.3300 1,203 33,716,010",
+    "202609 09.10 56,000 181216018 94.9000 143.9000 94.9000 143.9000 11 1,271,690",
+    # 取引金額が小さく、桁の上限では弾けない行
+    "202609 09.10 57,000 181217018 110.7200 176.9000 110.7200 176.9000 5 512,340",
+])
+
+
 class TestSiopDailyReport(unittest.TestCase):
     """大阪取引所日報（株価指数オプション）から行使価格別の建玉を取り出す。"""
 
@@ -455,6 +469,29 @@ class TestSiopDailyReport(unittest.TestCase):
         chains = self.parse([SIOP_PUT_PAGE, SIOP_CALL_PAGE])
         total = chains["26-09"].total_oi("put") + chains["26-09"].total_oi("call")
         self.assertLess(total, 1_000_000, "建玉の桁がおかしい（列ずれの疑い）")
+
+    def test_jnet_section_is_excluded(self):
+        """
+        J-NET市場の表は清算価格も建玉も持たない。取り込むと取引金額（円）を
+        建玉として拾う（実データで踏んだ）。桁の上限では小さい金額を弾けないので、
+        市場の見出しで切り分ける必要がある。
+        """
+        st = sf.SiopStats()
+        chains = sf.parse_siop_pages([SIOP_JNET_PAGE], stats=st)
+        self.assertEqual(st.accepted, 0, "J-NET市場の行を取り込んでいる")
+        self.assertEqual(st.pages_jnet, 1)
+        self.assertEqual(chains, {})
+
+    def test_auction_and_jnet_mixed(self):
+        """競争売買市場のページだけを採り、J-NETのページは飛ばすこと。"""
+        st = sf.SiopStats()
+        chains = sf.parse_siop_pages([SIOP_PUT_PAGE, SIOP_JNET_PAGE, SIOP_CALL_PAGE],
+                                     stats=st)
+        self.assertEqual(chains["26-09"].rows[67000.0].put_oi, 2816)
+        self.assertEqual(chains["26-09"].rows[70000.0].call_oi, 3523)
+        # J-NETの 48,000 / 56,000 / 57,000 が混ざっていないこと
+        for k in (48000.0, 56000.0, 57000.0):
+            self.assertNotIn(k, chains["26-09"].rows, f"J-NETの {k:,.0f} が混入している")
 
     def test_result_feeds_the_analytics_engine(self):
         chains = self.parse([SIOP_PUT_PAGE, SIOP_CALL_PAGE])
