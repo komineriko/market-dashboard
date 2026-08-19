@@ -2,19 +2,19 @@
  {
   "date": "2026-08-18",
   "forward": 67540.0,
-  "atm_iv": 29.27,
-  "rr25": 4.02,
-  "bf25": 0.83,
-  "put25_iv": 32.11,
-  "call25_iv": 28.09,
-  "gex_at_atm": -48445786.3,
-  "gex_flip": 70841.0,
+  "atm_iv": 29.25,
+  "rr25": 4.5,
+  "bf25": 0.93,
+  "put25_iv": 32.44,
+  "call25_iv": 27.94,
+  "gex_at_atm": -15860.7,
+  "gex_flip": 68517.0,
   "gex_regime": "ショートガンマ",
-  "put_effective_delta": 1392635287.0,
-  "max_pain": 67500.0,
+  "put_effective_delta": 415636.0,
+  "max_pain": 64500.0,
   "nikkei_vi": null,
   "spot_close": 67460.73,
-  "sigma_abs": 5069.0,
-  "cross_check": 7843.0
+  "sigma_abs": 5066.0,
+  "cross_check": 8013.0
  }
 ]
