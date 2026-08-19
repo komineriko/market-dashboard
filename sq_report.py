@@ -1030,6 +1030,10 @@ def build_participant_section(psrc, prev: Optional[Dict[str, Any]],
     """
     参加者別のネット建玉と前週比。
 
+    限月では絞らない。先物の限月は3・6・9・12月の四半期サイクルで、
+    オプションの当限（例 9・10・11月）で絞ると12月限が丸ごと落ちる。
+    ファイルには取引されている限月しか載らないので、全部を合算するのが正しい。
+
     このデータの性質上、次の3点はレポート側で必ず明示する。
       * 証券会社単位であり、その先の顧客が誰かは分からない（自己玉と顧客玉が混在）
       * 売超・買超それぞれ上位15社のみで、市場全体の集計ではない
@@ -1041,7 +1045,8 @@ def build_participant_section(psrc, prev: Optional[Dict[str, Any]],
             "note": "参加者別建玉残高を取得できなかった。",
         }
 
-    agg = sa_aggregate(psrc.rows, months)
+    agg = sa_aggregate(psrc.rows, None)
+    covered = sorted({r.month for r in psrc.rows})
     prev_net = (prev or {}).get("net") or {}
     prev_as_of = (prev or {}).get("as_of")
 
@@ -1070,7 +1075,8 @@ def build_participant_section(psrc, prev: Optional[Dict[str, Any]],
         "as_of": psrc.as_of.isoformat(),
         "lag_days": lag,
         "origin": psrc.origin,
-        "months": list(months),
+        "months": covered,
+        "products": sorted({r.product for r in psrc.rows}),
         "total": _fmt(total, 1, plus=True),
         "prev_as_of": prev_as_of or "—",
         "rows": rows[:top],
@@ -1089,5 +1095,5 @@ def participant_snapshot(psrc, months: Sequence[str]) -> Optional[Dict[str, Any]
         return None
     return {
         "as_of": psrc.as_of.isoformat(),
-        "net": {name: round(net, 1) for name, net, _ in sa_aggregate(psrc.rows, months)},
+        "net": {name: round(net, 1) for name, net, _ in sa_aggregate(psrc.rows, None)},
     }

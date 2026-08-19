@@ -617,6 +617,19 @@ class TestParticipantSection(unittest.TestCase):
         self.src = sf.ParticipantSource(as_of=date(2026, 8, 14), rows=rows,
                                         origin="20260814_indexfut_oi_by_tp.xlsx")
 
+    def test_all_contract_months_are_aggregated(self):
+        """
+        先物の限月は四半期サイクルなので、オプションの当限で絞ると12月限が落ちる。
+        引数の months に関わらず、ファイルにある限月をすべて合算すること。
+        """
+        sec = self.sr.build_participant_section(
+            self.src, None, ["26-09"], self.date(2026, 8, 18))
+        by = {r["name"]: r for r in sec["rows"]}
+        # 12月限にしか出てこない参加者が残っていること
+        self.assertIn("みずほ証券", by)
+        self.assertIn("26-12", sec["months"])
+        self.assertIn("日経225mini", sec["products"])
+
     def test_section_reports_lag_from_base_date(self):
         sec = self.sr.build_participant_section(
             self.src, None, ["26-09", "26-10", "26-12"], self.date(2026, 8, 18))

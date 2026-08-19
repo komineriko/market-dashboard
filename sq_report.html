@@ -1701,7 +1701,8 @@ function render(d){
     const p = d.participants;
     app.appendChild(section('取引参加者別ネット建玉（週次）'));
     app.appendChild($('p','note',
-      `${p.as_of} 時点（本レポートの基準日の ${p.lag_days}日前）／対象 ${(p.months||[]).join('・')}／` +
+      `${p.as_of} 時点（本レポートの基準日の ${p.lag_days}日前）／` +
+      `対象 ${(p.products||[]).join('・')}／限月 ${(p.months||[]).join('・')}／` +
       `合計 ${p.total}枚（ラージ換算）` +
       (p.prev_as_of && p.prev_as_of !== '—' ? `／前週は ${p.prev_as_of} 時点` : '')));
     const warn = $('div','card disc');
