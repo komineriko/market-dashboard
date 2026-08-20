@@ -789,6 +789,10 @@ def build_answer_check(prev_watch: Sequence[Dict[str, Any]],
             verdict = "⚠ 本日は同じ指標を算出できず、答え合わせ不能"
         else:
             hits = []
+            if isinstance(now, (int, float)) and isinstance(before, (int, float)):
+                # 符号の反転は閾値とは別に効く。GEXなら レジーム転換 そのものを意味する。
+                if before * now < 0:
+                    hits.append(f"★符号が反転（{'＋→−' if before > 0 else '−→＋'}）")
             if isinstance(now, (int, float)):
                 if item.get("hi") is not None and now >= item["hi"]:
                     hits.append(f"閾値 {_fmt(item['hi'], 2)} を超過 → {item.get('hi_means', '')}")
@@ -894,8 +898,13 @@ def chain_from_dict(d: Dict[str, Any]) -> sa.Chain:
 
 
 def wall_oi_metrics(chain: sa.Chain, forward: float,
-                    half_width: float = 375.0, span: float = 0.08) -> Dict[str, int]:
-    """壁の帯（±375円）の建玉を、答え合わせで参照できるフラットなキーにして返す。"""
+                    half_width: float = 375.0, span: float = 0.18) -> Dict[str, int]:
+    """
+    壁の帯（±375円）の建玉を、答え合わせで参照できるフラットなキーにして返す。
+
+    範囲を広めに取る。前日に監視対象とした壁が現値から離れると、
+    翌日に同じキーを算出できず「答え合わせ不能」になってしまうため。
+    """
     out: Dict[str, int] = {}
     for center in chain.strikes:
         if center % 500 != 0 or abs(center - forward) > span * forward:

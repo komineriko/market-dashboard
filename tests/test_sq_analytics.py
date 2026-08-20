@@ -302,5 +302,50 @@ class TestComposite(unittest.TestCase):
             self.assertGreater(pcr, 1)
 
 
+class TestAnswerCheck(unittest.TestCase):
+    """監視ポイントの自動評価。"""
+
+    def setUp(self):
+        import sq_report as sr
+        self.sr = sr
+
+    def test_sign_flip_is_reported(self):
+        """GEXの符号反転はレジーム転換そのもの。閾値が無くても明示すること。"""
+        watch = [{"id": "gex", "metric": "gex_at_atm", "value": 43.1,
+                  "label": "Net GEX at ATM", "rule": ""}]
+        out = self.sr.build_answer_check(watch, {"gex_at_atm": -347.4}, {})
+        self.assertIn("符号が反転", out[0]["verdict"])
+        self.assertIn("＋→−", out[0]["verdict"])
+
+    def test_no_sign_flip_when_same_side(self):
+        watch = [{"id": "gex", "metric": "gex_at_atm", "value": -100.0,
+                  "label": "Net GEX at ATM", "rule": ""}]
+        out = self.sr.build_answer_check(watch, {"gex_at_atm": -347.4}, {})
+        self.assertNotIn("符号が反転", out[0]["verdict"])
+
+    def test_threshold_and_sign_flip_combine(self):
+        watch = [{"id": "rr", "metric": "rr25", "value": -1.0, "label": "RR25",
+                  "rule": "", "hi": 6.0, "hi_means": "パニック域"}]
+        out = self.sr.build_answer_check(watch, {"rr25": 6.5}, {})
+        self.assertIn("符号が反転", out[0]["verdict"])
+        self.assertIn("パニック域", out[0]["verdict"])
+
+    def test_missing_metric_is_flagged(self):
+        watch = [{"id": "x", "metric": "not_computed", "value": 1.0, "label": "X", "rule": ""}]
+        out = self.sr.build_answer_check(watch, {}, {})
+        self.assertIn("算出できず", out[0]["verdict"])
+
+    def test_wall_metrics_cover_strikes_far_from_forward(self):
+        """
+        現値から離れた壁でも答え合わせできること。
+        範囲が狭いと、前日に監視した壁が翌日に評価不能になる（実データで踏んだ）。
+        """
+        chain = build_chain()
+        keys = self.sr.wall_oi_metrics(chain, 65470.0)
+        # 65,470 の 8.4%下にある 60,000 が含まれること
+        self.assertIn("wall_oi_put_60000", keys)
+        self.assertGreater(keys["wall_oi_put_60000"], 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
