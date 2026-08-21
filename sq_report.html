@@ -91,48 +91,48 @@ const SQ_DATA = {
  "meta": {
   "title": "SQ予測レポート 日経225オプション 2026年9月限",
   "month": "26-09",
-  "base_date": "2026-08-19",
-  "base_weekday": "水",
+  "base_date": "2026-08-20",
+  "base_weekday": "木",
   "sq_date": "2026-09-11",
   "sq_weekday": "金",
   "is_major_sq": true,
-  "calendar_days": 23,
-  "business_days": 17,
+  "calendar_days": 22,
+  "business_days": 16,
   "phase": "観測モード",
-  "generated_at": "2026-08-20 23:29 JST",
-  "origin": "JPX 大阪取引所日報 2026-08-19",
+  "generated_at": "2026-08-21 23:28 JST",
+  "origin": "JPX 大阪取引所日報 2026-08-20",
   "sources": [
-   "JPX 大阪取引所日報 2026-08-19",
-   "建玉・清算価格: 大阪取引所日報 siop_dyr_20260819.pdf",
-   "⚠ 2026-08-19 の清算値段CSVが見つからず、原資産価格・金利は未取得",
-   "日経平均: yfinance ^N225（2026-08-19）",
+   "JPX 大阪取引所日報 2026-08-20",
+   "建玉・清算価格: 大阪取引所日報 siop_dyr_20260820.pdf",
+   "⚠ 2026-08-20 の清算値段CSVが見つからず、原資産価格・金利は未取得",
+   "日経平均: yfinance ^N225（2026-08-20）",
    "参加者別建玉: 20260814_indexfut_oi_by_tp.xlsx（2026-08-14 時点）"
   ],
   "has_prev": true
  },
  "conclusion": {
-  "market_today": "日経平均 65,326.42円（-2,134.30、-3.16%）。日中は 65,134〜66,834。⚠ 下落・上昇の理由は板データからは判定できないため記載しない。",
-  "direction": "レジームが反転した。ロングガンマ → ショートガンマ。Net GEX at ATM +43.1億 → -347.4億、フリップ 67,312。現値 F=65,470 はフリップの1,842円下＝既に加速域の内側。ディーラーは下落を増幅する側",
-  "sq_band": "インプライド中心 65,470／50%帯 60,007〜63,905／80%帯 55,024〜69,897。⚠ 手法クロスチェック -683円 で目安超過。帯の信頼度は低い",
-  "battle_range": "上 70,000（名目36.4億・壁スコア77.5）／67,000（名目48.5億・壁スコア69.7） ／ 下 60,000（66.4億・76.5）／65,000（87.5億・68.2）／63,000（60.6億・52.7）",
-  "character": "RR25 +4.50 → +5.90、駆動はPUT側（25dPut IV +4.99）＝真の下方警戒の再構築、BF25 +0.76",
-  "key_observation": "実効デルタは 14,885 → 22,432（+7,547）。そのうち新規ヘッジ（ポジション要因）は +408枚相当にすぎず、残り +7,139 は現値移動と時間経過でもともとあった保険のデルタが立ち上がった分。「積み直した」のではなく「効き始めた」。",
-  "next_branch": "下 60,000（名目66.4億・スコア76.5）。割れると Net GEX は 63,500 で -672.5億、64,000 で -597.5億、64,500 で -516.9億、65,000 で -431.4億 と推移する ／ 上は 67,312（フリップ）── ここを取り返せばロングガンマに戻る"
+  "market_today": "日経平均 66,216.79円（+890.37、+1.36%）。日中は 65,652〜66,325。⚠ 下落・上昇の理由は板データからは判定できないため記載しない。",
+  "direction": "レジームはショートガンマ。Net GEX at ATM -347.4億 → -157.5億、フリップ 67,098。現値 F=66,355 はフリップの743円下＝既に加速域の内側。ディーラーは下落を増幅する側",
+  "sq_band": "インプライド中心 66,355／50%帯 62,837〜66,481／80%帯 58,637〜66,513",
+  "battle_range": "上 67,000（名目78.6億・壁スコア85.1）／70,000（名目39.7億・壁スコア71.8） ／ 下 60,000（44.3億・74.1）／65,000（62.8億・63.5）／66,000（58.3億・60.5）",
+  "character": "RR25 +5.90 → +4.84、PUT側が売られて縮小（-3.15）＝恐怖の後退、BF25 +0.77",
+  "key_observation": "実効デルタは 22,432 → 18,610（-3,822）。そのうち新規ヘッジ（ポジション要因）は +69枚相当にすぎず、残り -3,890 は現値移動と時間経過でもともとあった保険のデルタが立ち上がった分。「積み直した」のではなく「効き始めた」。",
+  "next_branch": "下 60,000（名目44.3億・スコア74.1）。割れると Net GEX は 64,500 で -529.8億、65,000 で -434.8億、65,500 で -335.1億、66,000 で -232.0億 と推移する ／ 上は 67,098（フリップ）── ここを取り返せばロングガンマに戻る"
  },
  "disclosures": [
   {
-   "level": "warn",
-   "title": "手法クロスチェックが目安（±500円）を超過。SQ帯の信頼度は低い",
-   "body": "プレミアム法 63,167 vs IV法 63,850 で乖離 -683円。価格差分（−ΔC/ΔK）が不安定なため、implied中央値・50%帯・80%帯はいずれも参考程度に留める。"
+   "level": "ok",
+   "title": "手法クロスチェックは目安の範囲内。SQ帯は参考値として使える",
+   "body": "プレミアム法 65,156 vs IV法 64,913、乖離 +244円。"
   },
   {
    "level": "warn",
    "title": "名目金額の前日比は使えない。増減の判断は枚数と実効デルタで行う",
-   "body": "値なし建玉は CALL 0枚／PUT 0枚。さらに現値が -2,070円 動いたこと自体で、すべてのOTMのプレミアムが機械的に動いている。名目金額は水準の絶対値としてのみ使う。"
+   "body": "値なし建玉は CALL 0枚／PUT 0枚。さらに現値が +885円 動いたこと自体で、すべてのOTMのプレミアムが機械的に動いている。名目金額は水準の絶対値としてのみ使う。"
   },
   {
    "level": "ok",
-   "title": "IV列の健全性: |ivC−ivP|>3pt が 5/108本（5%）",
+   "title": "IV列の健全性: |ivC−ivP|>3pt が 6/106本（6%）",
    "body": "両側でIVが立った行使価格のうち、CALLとPUTのIVが3pt以上ずれている本数。ATM近辺の板は健全で、フォワード・ATM IV・実効デルタ・GEX は信頼してよい。"
   },
   {
@@ -142,29 +142,29 @@ const SQ_DATA = {
   }
  ],
  "sq_band": {
-  "center": "65,470",
-  "sigma": "5,542",
+  "center": "66,355",
+  "sigma": "5,065",
   "band50": [
-   "60,007",
-   "63,905"
+   "62,837",
+   "66,481"
   ],
   "band80": [
-   "55,024",
-   "69,897"
+   "58,637",
+   "66,513"
   ],
-  "median_premium": "63,167",
-  "median_iv": "63,850",
-  "divergence": "-683",
-  "reliable": false,
-  "prob_in_condor": "68.2",
+  "median_premium": "65,156",
+  "median_iv": "64,913",
+  "divergence": "+244",
+  "reliable": true,
+  "prob_in_condor": "80.0",
   "parity": [
    {
-    "strike": "65,875",
-    "forward": "65,450"
+    "strike": "66,750",
+    "forward": "66,345"
    },
    {
-    "strike": "60,750",
-    "forward": "65,455"
+    "strike": "61,750",
+    "forward": "66,350"
    }
   ],
   "parity_spread": "60"
@@ -172,184 +172,184 @@ const SQ_DATA = {
  "summary_table": [
   {
    "label": "日経平均終値",
-   "prev": "67,460.73",
-   "today": "65,326.42",
-   "change": "-2,134.31",
+   "prev": "65,326.42",
+   "today": "66,216.79",
+   "change": "+890.37",
    "note": "現物終値"
   },
   {
    "label": "フォワード F",
-   "prev": "67,540",
-   "today": "65,470",
-   "change": "-2,070",
+   "prev": "65,470",
+   "today": "66,355",
+   "change": "+885",
    "note": "プット・コール・パリティ由来"
   },
   {
    "label": "ATM strike",
-   "prev": "67,500",
-   "today": "65,500",
-   "change": "-2,000",
+   "prev": "65,500",
+   "today": "66,375",
+   "change": "+875",
    "note": "ATM基準"
   },
   {
    "label": "ATM IV（カーブ補間）",
-   "prev": "29.25",
-   "today": "33.72",
-   "change": "+4.47",
+   "prev": "33.72",
+   "today": "31.09",
+   "change": "-2.63",
    "note": "F でのカーブ補間＝公式値"
   },
   {
    "label": "26-10 ATM IV",
-   "prev": "29.25",
-   "today": "32.19",
-   "change": "+2.94",
+   "prev": "32.19",
+   "today": "30.22",
+   "change": "-1.97",
    "note": "期先"
   },
   {
    "label": "26-09 − 26-10 スプレッド",
-   "prev": "0.01",
-   "today": "1.54",
-   "change": "+1.53",
+   "prev": "1.54",
+   "today": "0.88",
+   "change": "-0.66",
    "note": "正=バックワーデーション／負=コンタンゴ"
   },
   {
    "label": "CALL OI（共通窓 20,000-100,000）",
-   "prev": "78,910",
-   "today": "80,000",
-   "change": "+1,090",
+   "prev": "80,001",
+   "today": "80,821",
+   "change": "+820",
    "note": "窓を揃えた前日比"
   },
   {
    "label": "PUT OI（共通窓）",
-   "prev": "139,266",
-   "today": "141,777",
-   "change": "+2,511",
+   "prev": "141,777",
+   "today": "142,559",
+   "change": "+782",
    "note": "窓を揃えた前日比"
   },
   {
    "label": "PCR（枚数・共通窓）",
-   "prev": "1.765",
-   "today": "1.772",
-   "change": "+0.007",
+   "prev": "1.772",
+   "today": "1.764",
+   "change": "-0.008",
    "note": ""
   },
   {
    "label": "CALL重心（枚数加重）",
-   "prev": "65,711",
-   "today": "65,768",
-   "change": "+57",
+   "prev": "65,768",
+   "today": "65,718",
+   "change": "-50",
    "note": ""
   },
   {
    "label": "PUT重心（枚数加重）",
-   "prev": "51,995",
-   "today": "52,111",
-   "change": "+115",
+   "prev": "52,111",
+   "today": "52,104",
+   "change": "-6",
    "note": ""
   },
   {
    "label": "max_pain",
-   "prev": "63,125",
+   "prev": "63,500",
    "today": "63,500",
-   "change": "+375",
-   "note": "現値との差 -1,970円"
+   "change": "+0",
+   "note": "現値との差 -2,855円"
   },
   {
    "label": "max_pain 傾き",
-   "prev": "9.4",
-   "today": "9.9",
-   "change": "+0.5",
+   "prev": "9.9",
+   "today": "10.0",
+   "change": "+0.1",
    "note": "5%割れで引力は無視可"
   },
   {
    "label": "Net GEX at ATM（億円）",
-   "prev": "43.1",
-   "today": "-347.4",
-   "change": "-390.5",
+   "prev": "-347.4",
+   "today": "-157.5",
+   "change": "+189.9",
    "note": "符号反転＝レジーム転換"
   },
   {
    "label": "GEXフリップ",
-   "prev": "67,327",
-   "today": "67,312",
-   "change": "-15",
+   "prev": "67,312",
+   "today": "67,098",
+   "change": "-214",
    "note": "現値がこの下ならショートガンマ"
   },
   {
    "label": "GEXレジーム",
-   "prev": "ロングガンマ",
+   "prev": "ショートガンマ",
    "today": "ショートガンマ",
-   "change": "反転",
+   "change": "—",
    "note": "ショートガンマ＝トレンド加速・オーバーシュート傾向"
   },
   {
    "label": "1σ（残期間）",
-   "prev": "5,066",
-   "today": "5,542",
-   "change": "+476",
-   "note": "残23暦日"
+   "prev": "5,542",
+   "today": "5,065",
+   "change": "-477",
+   "note": "残22暦日"
   },
   {
    "label": "RR25（25dP − 25dC）",
-   "prev": "4.50",
-   "today": "5.90",
-   "change": "+1.40",
+   "prev": "5.90",
+   "today": "4.84",
+   "change": "-1.06",
    "note": "+6.0 超でパニック域／+4.0 割れで正常化"
   },
   {
    "label": "BF25",
-   "prev": "0.93",
-   "today": "0.76",
-   "change": "-0.17",
+   "prev": "0.76",
+   "today": "0.77",
+   "change": "+0.01",
    "note": "両テールの持ち上がり"
   },
   {
    "label": "PUTブック実効デルタ（枚）",
-   "prev": "14,885",
-   "today": "22,432",
-   "change": "+7,547",
+   "prev": "22,432",
+   "today": "18,610",
+   "change": "-3,822",
    "note": "判定はポジション要因で行う（§2-4）"
   },
   {
    "label": "PUTブック理論プレミアム（億円）",
-   "prev": "570.0",
-   "today": "1,021.5",
-   "change": "+451.5",
+   "prev": "1,021.5",
+   "today": "743.9",
+   "change": "-277.6",
    "note": "現値移動の寄与が大きい"
   },
   {
    "label": "PUTブック ベガ（億円/1pt）",
-   "prev": "31.52",
-   "today": "38.29",
-   "change": "+6.77",
+   "prev": "38.29",
+   "today": "33.46",
+   "change": "-4.83",
    "note": ""
   },
   {
    "label": "20円未満PUTの建玉",
-   "prev": "26,624",
-   "today": "19,514",
-   "change": "-7,110",
-   "note": "当日 14%＝ゴミ玉比率"
+   "prev": "19,514",
+   "today": "29,765",
+   "change": "+10,251",
+   "note": "当日 21%＝ゴミ玉比率"
   },
   {
    "label": "捕捉窓",
    "prev": "20,000–100,000",
    "today": "20,000–100,000",
-   "change": "共通窓 20,000–100,000（293本）",
+   "change": "共通窓 20,000–100,000（295本）",
    "note": "窓が動くと限月別合計の前日比は使えない"
   },
   {
    "label": "IV列健全性（|ivC−ivP|>3pt）",
-   "prev": "8/106",
-   "today": "5/108",
+   "prev": "5/108",
+   "today": "6/106",
    "change": "—",
    "note": "板の質"
   },
   {
    "label": "手法クロスチェック乖離",
-   "prev": "0",
-   "today": "-683",
-   "change": "-683",
+   "prev": "-683",
+   "today": "244",
+   "change": "+927",
    "note": "±500円 以内でSQ帯を判断に使える"
   }
  ],
@@ -370,520 +370,522 @@ const SQ_DATA = {
     "atm_iv": "33.72",
     "put25_iv": "37.43",
     "call25_iv": "31.53"
+   },
+   {
+    "date": "2026-08-20",
+    "rr25": "+4.84",
+    "bf25": "+0.77",
+    "atm_iv": "31.09",
+    "put25_iv": "34.28",
+    "call25_iv": "29.44"
    }
   ],
   "moneyness": [
    {
     "m": "1.05",
-    "iv": "31.71",
-    "strike": "68,744"
+    "iv": "29.52",
+    "strike": "69,673"
    },
    {
     "m": "1.02",
-    "iv": "32.71",
-    "strike": "66,779"
+    "iv": "30.25",
+    "strike": "67,682"
    },
    {
     "m": "1.00",
-    "iv": "33.72",
-    "strike": "65,470"
+    "iv": "31.09",
+    "strike": "66,355"
    },
    {
     "m": "0.98",
-    "iv": "34.79",
-    "strike": "64,161"
+    "iv": "32.13",
+    "strike": "65,028"
    },
    {
     "m": "0.95",
-    "iv": "37.07",
-    "strike": "62,196"
+    "iv": "34.27",
+    "strike": "63,037"
    },
    {
     "m": "0.92",
-    "iv": "39.42",
-    "strike": "60,232"
+    "iv": "36.49",
+    "strike": "61,047"
    },
    {
     "m": "0.90",
-    "iv": "41.25",
-    "strike": "58,923"
+    "iv": "38.23",
+    "strike": "59,720"
    },
    {
     "m": "0.85",
-    "iv": "46.41",
-    "strike": "55,650"
+    "iv": "43.70",
+    "strike": "56,402"
    },
    {
     "m": "0.80",
-    "iv": "52.77",
-    "strike": "52,376"
+    "iv": "50.27",
+    "strike": "53,084"
    },
    {
     "m": "0.75",
-    "iv": "59.74",
-    "strike": "49,102"
+    "iv": "57.50",
+    "strike": "49,766"
    }
   ],
   "delta": [
    {
     "label": "put25d",
-    "strike": "61,721",
-    "iv": "37.43"
+    "strike": "62,915",
+    "iv": "34.28"
    },
    {
     "label": "put15d",
-    "strike": "59,190",
-    "iv": "40.77"
+    "strike": "60,652",
+    "iv": "36.93"
    },
    {
     "label": "put10d",
-    "strike": "57,250",
-    "iv": "43.56"
+    "strike": "58,890",
+    "iv": "39.42"
    },
    {
     "label": "put5d",
-    "strike": "53,636",
-    "iv": "50.21"
+    "strike": "55,614",
+    "iv": "45.26"
    },
    {
     "label": "call25d",
-    "strike": "69,277",
-    "iv": "31.53"
+    "strike": "69,853",
+    "iv": "29.44"
    },
    {
     "label": "call10d",
-    "strike": "72,576",
-    "iv": "31.09"
+    "strike": "72,840",
+    "iv": "28.84"
    }
   ]
  },
  "put_book": {
   "summary": {
-   "oi": "141,777",
-   "effective_delta": "22,432",
-   "vega_oku": "38.29",
-   "premium_oku": "1,021.5",
-   "junk_oi": "19,514",
-   "junk_ratio": "14%"
+   "oi": "142,559",
+   "effective_delta": "18,610",
+   "vega_oku": "33.46",
+   "premium_oku": "743.9",
+   "junk_oi": "29,765",
+   "junk_ratio": "21%"
   },
   "decomposition": {
-   "total": "+7,547",
-   "position": "+408",
-   "spot_and_time": "+7,139",
+   "total": "-3,822",
+   "position": "+69",
+   "spot_and_time": "-3,890",
    "verdict": "大半は現値移動で既存玉が立ち上がった分＝『効き始めた』",
    "is_real_build": false,
    "rows": [
     {
      "strike": "60,000",
-     "prev": "9,531",
-     "today": "10,224",
-     "diff": "+693",
-     "delta": "-0.175",
-     "contribution": "+122"
+     "prev": "10,224",
+     "today": "10,523",
+     "diff": "+299",
+     "delta": "-0.129",
+     "contribution": "+39"
     },
     {
-     "strike": "63,000",
-     "prev": "3,584",
-     "today": "3,761",
-     "diff": "+177",
-     "delta": "-0.321",
-     "contribution": "+57"
-    },
-    {
-     "strike": "58,500",
-     "prev": "1,203",
-     "today": "1,576",
-     "diff": "+373",
-     "delta": "-0.130",
-     "contribution": "+48"
-    },
-    {
-     "strike": "67,000",
-     "prev": "2,816",
-     "today": "2,739",
-     "diff": "-77",
-     "delta": "-0.596",
-     "contribution": "-46"
-    },
-    {
-     "strike": "63,500",
-     "prev": "800",
-     "today": "924",
-     "diff": "+124",
-     "delta": "-0.350",
-     "contribution": "+43"
-    },
-    {
-     "strike": "64,000",
-     "prev": "3,045",
-     "today": "3,154",
-     "diff": "+109",
-     "delta": "-0.383",
-     "contribution": "+42"
-    },
-    {
-     "strike": "65,000",
-     "prev": "3,553",
-     "today": "3,644",
-     "diff": "+91",
-     "delta": "-0.450",
-     "contribution": "+41"
-    },
-    {
-     "strike": "59,000",
-     "prev": "3,324",
-     "today": "3,517",
-     "diff": "+193",
-     "delta": "-0.145",
-     "contribution": "+28"
-    },
-    {
-     "strike": "62,500",
-     "prev": "789",
-     "today": "861",
-     "diff": "+72",
-     "delta": "-0.291",
-     "contribution": "+21"
-    },
-    {
-     "strike": "53,000",
-     "prev": "2,856",
-     "today": "3,291",
-     "diff": "+435",
-     "delta": "-0.045",
-     "contribution": "+20"
-    },
-    {
-     "strike": "57,000",
-     "prev": "2,843",
-     "today": "2,996",
-     "diff": "+153",
-     "delta": "-0.096",
+     "strike": "62,625",
+     "prev": "10",
+     "today": "76",
+     "diff": "+66",
+     "delta": "-0.234",
      "contribution": "+15"
     },
     {
-     "strike": "58,000",
-     "prev": "2,241",
-     "today": "2,353",
-     "diff": "+112",
-     "delta": "-0.116",
-     "contribution": "+13"
+     "strike": "58,500",
+     "prev": "1,576",
+     "today": "1,687",
+     "diff": "+111",
+     "delta": "-0.092",
+     "contribution": "+10"
     },
     {
-     "strike": "61,000",
-     "prev": "2,444",
-     "today": "2,494",
-     "diff": "+50",
-     "delta": "-0.219",
-     "contribution": "+11"
+     "strike": "65,000",
+     "prev": "3,644",
+     "today": "3,626",
+     "diff": "-18",
+     "delta": "-0.382",
+     "contribution": "-7"
+    },
+    {
+     "strike": "53,000",
+     "prev": "3,291",
+     "today": "3,125",
+     "diff": "-166",
+     "delta": "-0.030",
+     "contribution": "-5"
+    },
+    {
+     "strike": "62,750",
+     "prev": "708",
+     "today": "728",
+     "diff": "+20",
+     "delta": "-0.241",
+     "contribution": "+5"
+    },
+    {
+     "strike": "62,000",
+     "prev": "2,989",
+     "today": "2,969",
+     "diff": "-20",
+     "delta": "-0.204",
+     "contribution": "-4"
     },
     {
      "strike": "66,000",
-     "prev": "2,407",
-     "today": "2,389",
-     "diff": "-18",
-     "delta": "-0.522",
-     "contribution": "-9"
+     "prev": "2,389",
+     "today": "2,397",
+     "diff": "+8",
+     "delta": "-0.457",
+     "contribution": "+4"
+    },
+    {
+     "strike": "63,875",
+     "prev": "94",
+     "today": "84",
+     "diff": "-10",
+     "delta": "-0.306",
+     "contribution": "-3"
+    },
+    {
+     "strike": "55,000",
+     "prev": "4,428",
+     "today": "4,492",
+     "diff": "+64",
+     "delta": "-0.044",
+     "contribution": "+3"
+    },
+    {
+     "strike": "68,000",
+     "prev": "2,156",
+     "today": "2,152",
+     "diff": "-4",
+     "delta": "-0.617",
+     "contribution": "-2"
+    },
+    {
+     "strike": "64,500",
+     "prev": "659",
+     "today": "666",
+     "diff": "+7",
+     "delta": "-0.347",
+     "contribution": "+2"
+    },
+    {
+     "strike": "62,500",
+     "prev": "861",
+     "today": "869",
+     "diff": "+8",
+     "delta": "-0.227",
+     "contribution": "+2"
+    },
+    {
+     "strike": "60,250",
+     "prev": "71",
+     "today": "83",
+     "diff": "+12",
+     "delta": "-0.137",
+     "contribution": "+2"
     }
    ]
   },
   "buckets": [
    {
     "label": "ATM−5%",
-    "oi": "30,611",
-    "effective_delta": "15,160",
-    "share": "67.6%"
+    "oi": "24,943",
+    "effective_delta": "11,902",
+    "share": "64.0%"
    },
    {
     "label": "−5〜−10%",
-    "oi": "23,615",
-    "effective_delta": "4,553",
-    "share": "20.3%"
+    "oi": "25,126",
+    "effective_delta": "4,360",
+    "share": "23.4%"
    },
    {
     "label": "−10〜−20%",
-    "oi": "25,297",
-    "effective_delta": "1,891",
-    "share": "8.4%"
+    "oi": "26,114",
+    "effective_delta": "1,689",
+    "share": "9.1%"
    },
    {
     "label": "−20%以遠",
-    "oi": "62,240",
-    "effective_delta": "813",
-    "share": "3.6%"
+    "oi": "66,362",
+    "effective_delta": "645",
+    "share": "3.5%"
    }
   ]
  },
  "oi_compare": {
   "available": true,
-  "window": "20,000–100,000（293本）",
+  "window": "20,000–100,000（295本）",
   "totals": [
    {
     "label": "CALL 合計",
-    "prev": "78,910",
-    "today": "80,000",
-    "change": "+1,090",
+    "prev": "80,001",
+    "today": "80,821",
+    "change": "+820",
     "note": ""
    },
    {
     "label": "PUT 合計",
-    "prev": "139,266",
-    "today": "141,777",
-    "change": "+2,511",
+    "prev": "141,777",
+    "today": "142,559",
+    "change": "+782",
     "note": ""
    },
    {
     "label": "PCR（枚数）",
-    "prev": "1.765",
-    "today": "1.772",
-    "change": "+0.007",
+    "prev": "1.772",
+    "today": "1.764",
+    "change": "-0.008",
     "note": ""
    },
    {
     "label": "CALL 重心（枚数加重）",
-    "prev": "65,711",
-    "today": "65,768",
-    "change": "+57",
+    "prev": "65,768",
+    "today": "65,718",
+    "change": "-50",
     "note": ""
    },
    {
     "label": "PUT 重心（枚数加重）",
-    "prev": "51,995",
-    "today": "52,111",
-    "change": "+115",
+    "prev": "52,111",
+    "today": "52,104",
+    "change": "-6",
     "note": ""
    },
    {
     "label": "PUT テール（≤60,000）",
-    "prev": "100,444",
-    "today": "102,370",
-    "change": "+1,926",
+    "prev": "102,370",
+    "today": "103,068",
+    "change": "+698",
     "note": ""
    },
    {
     "label": "PUT テール（≤53,000）",
-    "prev": "65,691",
-    "today": "66,197",
-    "change": "+506",
+    "prev": "66,197",
+    "today": "66,362",
+    "change": "+165",
     "note": ""
    }
   ],
   "call_changes": [
    {
-    "strike": "70,000",
-    "prev": "3,523",
-    "today": "3,892",
-    "diff": "+369"
-   },
-   {
-    "strike": "82,000",
-    "prev": "258",
-    "today": "420",
-    "diff": "+162"
+    "strike": "66,750",
+    "prev": "8",
+    "today": "1,010",
+    "diff": "+1,002"
    },
    {
     "strike": "67,000",
-    "prev": "3,118",
-    "today": "3,266",
-    "diff": "+148"
+    "prev": "3,266",
+    "today": "3,567",
+    "diff": "+301"
    },
    {
-    "strike": "80,000",
-    "prev": "1,636",
-    "today": "1,773",
-    "diff": "+137"
+    "strike": "72,750",
+    "prev": "8",
+    "today": "201",
+    "diff": "+193"
    },
    {
-    "strike": "78,000",
-    "prev": "2,213",
-    "today": "2,327",
-    "diff": "+114"
+    "strike": "66,000",
+    "prev": "1,626",
+    "today": "1,776",
+    "diff": "+150"
+   },
+   {
+    "strike": "65,000",
+    "prev": "5,254",
+    "today": "5,380",
+    "diff": "+126"
+   },
+   {
+    "strike": "90,000",
+    "prev": "548",
+    "today": "661",
+    "diff": "+113"
+   },
+   {
+    "strike": "66,500",
+    "prev": "764",
+    "today": "874",
+    "diff": "+110"
    },
    {
     "strike": "87,500",
-    "prev": "732",
-    "today": "445",
-    "diff": "-287"
+    "prev": "445",
+    "today": "345",
+    "diff": "-100"
+   },
+   {
+    "strike": "70,000",
+    "prev": "3,892",
+    "today": "3,761",
+    "diff": "-131"
+   },
+   {
+    "strike": "74,000",
+    "prev": "1,041",
+    "today": "909",
+    "diff": "-132"
+   },
+   {
+    "strike": "75,000",
+    "prev": "3,090",
+    "today": "2,924",
+    "diff": "-166"
+   },
+   {
+    "strike": "72,500",
+    "prev": "2,171",
+    "today": "1,786",
+    "diff": "-385"
    }
   ],
   "put_changes": [
    {
     "strike": "60,000",
-    "prev": "9,531",
-    "today": "10,224",
-    "diff": "+693"
-   },
-   {
-    "strike": "53,000",
-    "prev": "2,856",
-    "today": "3,291",
-    "diff": "+435"
+    "prev": "10,224",
+    "today": "10,523",
+    "diff": "+299"
    },
    {
     "strike": "58,500",
-    "prev": "1,203",
-    "today": "1,576",
-    "diff": "+373"
+    "prev": "1,576",
+    "today": "1,687",
+    "diff": "+111"
    },
    {
-    "strike": "59,000",
-    "prev": "3,324",
-    "today": "3,517",
-    "diff": "+193"
+    "strike": "38,000",
+    "prev": "981",
+    "today": "1,083",
+    "diff": "+102"
    },
    {
-    "strike": "63,000",
-    "prev": "3,584",
-    "today": "3,761",
-    "diff": "+177"
-   },
-   {
-    "strike": "57,000",
-    "prev": "2,843",
-    "today": "2,996",
-    "diff": "+153"
-   },
-   {
-    "strike": "63,500",
-    "prev": "800",
-    "today": "924",
-    "diff": "+124"
-   },
-   {
-    "strike": "58,000",
-    "prev": "2,241",
-    "today": "2,353",
-    "diff": "+112"
-   },
-   {
-    "strike": "64,000",
-    "prev": "3,045",
-    "today": "3,154",
-    "diff": "+109"
-   },
-   {
-    "strike": "31,500",
-    "prev": "160",
-    "today": "19",
-    "diff": "-141"
-   },
-   {
-    "strike": "35,000",
-    "prev": "4,021",
-    "today": "3,836",
-    "diff": "-185"
+    "strike": "53,000",
+    "prev": "3,291",
+    "today": "3,125",
+    "diff": "-166"
    }
   ],
   "bucket_call": [
    {
     "center": "67,000",
-    "prev": "3,130",
-    "today": "3,280",
-    "diff": "+150"
-   },
-   {
-    "center": "69,000",
-    "prev": "2,169",
-    "today": "2,247",
-    "diff": "+78"
-   },
-   {
-    "center": "68,500",
-    "prev": "517",
-    "today": "579",
-    "diff": "+62"
-   },
-   {
-    "center": "68,000",
-    "prev": "2,611",
-    "today": "2,669",
-    "diff": "+58"
-   },
-   {
-    "center": "67,500",
-    "prev": "2,662",
-    "today": "2,685",
-    "diff": "+23"
-   },
-   {
-    "center": "65,500",
-    "prev": "163",
-    "today": "175",
-    "diff": "+12"
+    "prev": "3,280",
+    "today": "4,611",
+    "diff": "+1,331"
    },
    {
     "center": "66,500",
-    "prev": "843",
-    "today": "849",
-    "diff": "+6"
-   },
-   {
-    "center": "63,000",
-    "prev": "963",
-    "today": "964",
-    "diff": "+1"
+    "prev": "849",
+    "today": "1,961",
+    "diff": "+1,112"
    },
    {
     "center": "66,000",
-    "prev": "1,703",
-    "today": "1,704",
-    "diff": "+1"
+    "prev": "1,704",
+    "today": "1,854",
+    "diff": "+150"
+   },
+   {
+    "center": "65,000",
+    "prev": "5,258",
+    "today": "5,384",
+    "diff": "+126"
+   },
+   {
+    "center": "69,500",
+    "prev": "2,403",
+    "today": "2,464",
+    "diff": "+61"
+   },
+   {
+    "center": "67,500",
+    "prev": "2,685",
+    "today": "2,710",
+    "diff": "+25"
+   },
+   {
+    "center": "69,000",
+    "prev": "2,247",
+    "today": "2,271",
+    "diff": "+24"
+   },
+   {
+    "center": "68,500",
+    "prev": "579",
+    "today": "592",
+    "diff": "+13"
+   },
+   {
+    "center": "62,500",
+    "prev": "802",
+    "today": "802",
+    "diff": "+0"
    }
   ],
   "bucket_put": [
    {
-    "center": "63,000",
-    "prev": "4,474",
-    "today": "4,657",
-    "diff": "+183"
-   },
-   {
-    "center": "63,500",
-    "prev": "1,137",
-    "today": "1,267",
-    "diff": "+130"
-   },
-   {
-    "center": "64,000",
-    "prev": "3,283",
-    "today": "3,392",
-    "diff": "+109"
-   },
-   {
-    "center": "65,000",
-    "prev": "4,248",
-    "today": "4,333",
-    "diff": "+85"
-   },
-   {
     "center": "62,500",
-    "prev": "1,829",
-    "today": "1,901",
-    "diff": "+72"
+    "prev": "1,901",
+    "today": "1,995",
+    "diff": "+94"
    },
    {
-    "center": "62,000",
-    "prev": "3,606",
-    "today": "3,629",
-    "diff": "+23"
+    "center": "63,000",
+    "prev": "4,657",
+    "today": "4,746",
+    "diff": "+89"
+   },
+   {
+    "center": "64,500",
+    "prev": "1,268",
+    "today": "1,275",
+    "diff": "+7"
+   },
+   {
+    "center": "66,000",
+    "prev": "3,134",
+    "today": "3,141",
+    "diff": "+7"
    },
    {
     "center": "65,500",
-    "prev": "1,680",
-    "today": "1,686",
-    "diff": "+6"
+    "prev": "1,686",
+    "today": "1,689",
+    "diff": "+3"
+   },
+   {
+    "center": "67,500",
+    "prev": "1,092",
+    "today": "1,093",
+    "diff": "+1"
    },
    {
     "center": "69,000",
     "prev": "1,220",
-    "today": "1,220",
-    "diff": "+0"
+    "today": "1,221",
+    "diff": "+1"
    },
    {
     "center": "68,500",
-    "prev": "379",
+    "prev": "378",
     "today": "378",
-    "diff": "-1"
+    "diff": "+0"
+   },
+   {
+    "center": "69,500",
+    "prev": "10",
+    "today": "10",
+    "diff": "+0"
    }
   ]
  },
@@ -895,589 +897,594 @@ const SQ_DATA = {
   ],
   "ceiling": {
    "strike": "75,000",
-   "net": "+5,197"
+   "net": "+5,030"
   },
   "floor": {
    "strike": "60,000",
-   "net": "-11,806"
+   "net": "-12,301"
   },
-  "forward": "65,470",
+  "forward": "66,355",
   "upper": [
    {
     "strike": "75,000",
-    "net": "+5,197"
-   },
-   {
-    "strike": "73,000",
-    "net": "+3,692"
+    "net": "+5,030"
    },
    {
     "strike": "80,000",
-    "net": "+3,640"
+    "net": "+3,708"
+   },
+   {
+    "strike": "73,000",
+    "net": "+3,705"
    },
    {
     "strike": "70,000",
-    "net": "+3,494"
+    "net": "+3,466"
    },
    {
     "strike": "72,000",
-    "net": "+3,421"
+    "net": "+3,042"
    }
   ],
   "lower": [
    {
     "strike": "60,000",
-    "net": "-11,806"
+    "net": "-12,301"
    },
    {
-    "strike": "25,000",
-    "net": "-7,438"
+    "strike": "30,000",
+    "net": "-6,641"
    },
    {
     "strike": "50,000",
-    "net": "-6,041"
+    "net": "-6,026"
    },
    {
     "strike": "55,000",
-    "net": "-5,815"
+    "net": "-5,880"
    },
    {
-    "strike": "40,000",
-    "net": "-5,192"
+    "strike": "25,000",
+    "net": "-5,497"
    }
   ],
   "per_month": [
    {
     "month": "26-09",
-    "call": "80,001",
-    "put": "141,777",
-    "pcr": "1.772"
+    "call": "80,821",
+    "put": "142,559",
+    "pcr": "1.764"
    },
    {
     "month": "26-10",
-    "call": "11,444",
-    "put": "31,276",
-    "pcr": "2.733"
+    "call": "12,495",
+    "put": "31,917",
+    "pcr": "2.554"
    },
    {
     "month": "26-11",
-    "call": "7,212",
-    "put": "14,173",
-    "pcr": "1.965"
+    "call": "7,800",
+    "put": "14,611",
+    "pcr": "1.873"
    }
   ]
  },
  "walls": {
   "upper": [
    {
-    "strike": "70,000",
-    "oi": "6,036",
-    "price": "600",
-    "nominal_oku": "36.4",
-    "score": "77.5"
+    "strike": "67,000",
+    "oi": "4,611",
+    "price": "1,680",
+    "nominal_oku": "78.6",
+    "score": "85.1"
    },
    {
-    "strike": "67,000",
-    "oi": "3,280",
-    "price": "1,480",
-    "nominal_oku": "48.5",
-    "score": "69.7"
+    "strike": "70,000",
+    "oi": "5,963",
+    "price": "655",
+    "nominal_oku": "39.7",
+    "score": "71.8"
    },
    {
     "strike": "67,500",
-    "oi": "2,685",
-    "price": "1,300",
-    "nominal_oku": "34.3",
-    "score": "54.2"
+    "oi": "2,710",
+    "price": "1,450",
+    "nominal_oku": "38.9",
+    "score": "51.7"
    },
    {
-    "strike": "66,000",
-    "oi": "1,704",
-    "price": "1,935",
-    "nominal_oku": "32.9",
-    "score": "51.5"
+    "strike": "66,500",
+    "oi": "1,961",
+    "price": "1,885",
+    "nominal_oku": "36.3",
+    "score": "49.4"
    },
    {
     "strike": "68,000",
-    "oi": "2,669",
-    "price": "1,115",
-    "nominal_oku": "30.2",
-    "score": "50.0"
+    "oi": "2,668",
+    "price": "1,255",
+    "nominal_oku": "34.0",
+    "score": "47.5"
    },
    {
     "strike": "69,000",
-    "oi": "2,247",
-    "price": "825",
-    "nominal_oku": "18.6",
-    "score": "36.9"
+    "oi": "2,271",
+    "price": "915",
+    "nominal_oku": "21.0",
+    "score": "36.1"
    }
   ],
   "lower": [
    {
     "strike": "60,000",
-    "oi": "10,368",
-    "price": "640",
-    "nominal_oku": "66.4",
-    "score": "76.5"
+    "oi": "10,679",
+    "price": "415",
+    "nominal_oku": "44.3",
+    "score": "74.1"
    },
    {
     "strike": "65,000",
-    "oi": "4,333",
-    "price": "2,035",
-    "nominal_oku": "87.5",
-    "score": "68.2"
+    "oi": "4,317",
+    "price": "1,465",
+    "nominal_oku": "62.8",
+    "score": "63.5"
+   },
+   {
+    "strike": "66,000",
+    "oi": "3,141",
+    "price": "1,890",
+    "nominal_oku": "58.3",
+    "score": "60.5"
    },
    {
     "strike": "63,000",
-    "oi": "4,657",
-    "price": "1,315",
-    "nominal_oku": "60.6",
-    "score": "52.7"
+    "oi": "4,746",
+    "price": "900",
+    "nominal_oku": "42.2",
+    "score": "49.6"
    },
    {
     "strike": "50,000",
-    "oi": "9,802",
-    "price": "99",
-    "nominal_oku": "9.7",
-    "score": "50.8"
+    "oi": "9,785",
+    "price": "63",
+    "nominal_oku": "6.2",
+    "score": "48.9"
    },
    {
     "strike": "64,000",
-    "oi": "3,392",
-    "price": "1,670",
-    "nominal_oku": "56.4",
-    "score": "48.5"
-   },
-   {
-    "strike": "62,000",
-    "oi": "3,629",
-    "price": "1,035",
-    "nominal_oku": "37.6",
-    "score": "37.3"
+    "oi": "3,382",
+    "price": "1,145",
+    "nominal_oku": "38.7",
+    "score": "44.1"
    }
   ],
   "condor": {
    "lower": "60,000",
-   "upper": "70,000",
-   "width": "10,000"
+   "upper": "67,000",
+   "width": "7,000"
   },
   "pins": [
    {
     "strike": "65,000",
-    "nominal_oku": "204.5",
-    "oi": "8,898"
+    "nominal_oku": "204.6",
+    "oi": "9,006"
    },
    {
     "strike": "67,000",
-    "nominal_oku": "130.9",
-    "oi": "6,005"
+    "nominal_oku": "123.7",
+    "oi": "6,303"
    },
    {
     "strike": "62,000",
-    "nominal_oku": "121.0",
-    "oi": "4,991"
+    "nominal_oku": "121.1",
+    "oi": "4,971"
    },
    {
     "strike": "60,000",
-    "nominal_oku": "113.7",
-    "oi": "11,010"
+    "nominal_oku": "96.9",
+    "oi": "11,309"
    }
   ],
   "gex_profile": [
    {
-    "level": "59,000",
-    "gex": "-1,031.5",
-    "is_flip": false
-   },
-   {
     "level": "59,500",
-    "gex": "-1,020.4",
+    "gex": "-1,070.4",
     "is_flip": false
    },
    {
     "level": "60,000",
-    "gex": "-1,002.5",
+    "gex": "-1,054.0",
     "is_flip": false
    },
    {
     "level": "60,500",
-    "gex": "-977.5",
+    "gex": "-1,029.4",
     "is_flip": false
    },
    {
     "level": "61,000",
-    "gex": "-945.1",
+    "gex": "-996.4",
     "is_flip": false
    },
    {
     "level": "61,500",
-    "gex": "-905.3",
+    "gex": "-954.7",
     "is_flip": false
    },
    {
     "level": "62,000",
-    "gex": "-857.9",
+    "gex": "-904.2",
     "is_flip": false
    },
    {
     "level": "62,500",
-    "gex": "-803.1",
+    "gex": "-845.1",
     "is_flip": false
    },
    {
     "level": "63,000",
-    "gex": "-741.2",
+    "gex": "-777.6",
     "is_flip": false
    },
    {
     "level": "63,500",
-    "gex": "-672.5",
+    "gex": "-702.1",
     "is_flip": false
    },
    {
     "level": "64,000",
-    "gex": "-597.5",
+    "gex": "-619.3",
     "is_flip": false
    },
    {
     "level": "64,500",
-    "gex": "-516.9",
+    "gex": "-529.8",
     "is_flip": false
    },
    {
     "level": "65,000",
-    "gex": "-431.4",
+    "gex": "-434.8",
     "is_flip": false
    },
    {
     "level": "65,500",
-    "gex": "-342.0",
+    "gex": "-335.1",
     "is_flip": false
    },
    {
     "level": "66,000",
-    "gex": "-249.5",
+    "gex": "-232.0",
     "is_flip": false
    },
    {
     "level": "66,500",
-    "gex": "-155.0",
+    "gex": "-126.8",
     "is_flip": false
    },
    {
     "level": "67,000",
-    "gex": "-59.6",
+    "gex": "-20.8",
     "is_flip": false
    },
    {
     "level": "67,500",
-    "gex": "+35.6",
+    "gex": "+84.7",
     "is_flip": false
    },
    {
     "level": "68,000",
-    "gex": "+129.7",
+    "gex": "+188.4",
     "is_flip": false
    },
    {
     "level": "68,500",
-    "gex": "+221.5",
+    "gex": "+288.9",
     "is_flip": false
    },
    {
     "level": "69,000",
-    "gex": "+310.0",
+    "gex": "+385.2",
     "is_flip": false
    },
    {
     "level": "69,500",
-    "gex": "+394.4",
+    "gex": "+476.1",
     "is_flip": false
    },
    {
     "level": "70,000",
-    "gex": "+473.8",
+    "gex": "+560.6",
     "is_flip": false
    },
    {
     "level": "70,500",
-    "gex": "+547.5",
+    "gex": "+638.1",
     "is_flip": false
    },
    {
     "level": "71,000",
-    "gex": "+615.0",
+    "gex": "+707.8",
     "is_flip": false
    },
    {
     "level": "71,500",
-    "gex": "+675.7",
+    "gex": "+769.3",
     "is_flip": false
    },
    {
     "level": "72,000",
-    "gex": "+729.4",
+    "gex": "+822.3",
+    "is_flip": false
+   },
+   {
+    "level": "72,500",
+    "gex": "+866.7",
+    "is_flip": false
+   },
+   {
+    "level": "73,000",
+    "gex": "+902.6",
     "is_flip": false
    }
   ],
-  "gex_flip": "67,312",
+  "gex_flip": "67,098",
   "gex_regime": "ショートガンマ",
   "max_pain": {
    "strike": "63,500",
-   "payout_oku": "3,585.5",
-   "slope": "9.9%",
+   "payout_oku": "3,585.2",
+   "slope": "10.0%",
    "negligible": false
   }
  },
  "deep_put": [
   {
+   "strike": "68,000",
+   "prev": "2,156",
+   "today": "2,152",
+   "diff": "-4",
+   "price": "2,900",
+   "moneyness": "1.025",
+   "delta": "-0.617",
+   "contribution": "-2"
+  },
+  {
+   "strike": "67,500",
+   "prev": "638",
+   "today": "638",
+   "diff": "+0",
+   "price": "2,605",
+   "moneyness": "1.017",
+   "delta": "-0.577",
+   "contribution": "+0"
+  },
+  {
    "strike": "67,000",
-   "prev": "2,816",
-   "today": "2,739",
-   "diff": "-77",
-   "price": "3,015",
-   "moneyness": "1.023",
-   "delta": "-0.596",
-   "contribution": "-46"
+   "prev": "2,739",
+   "today": "2,736",
+   "diff": "-3",
+   "price": "2,330",
+   "moneyness": "1.010",
+   "delta": "-0.537",
+   "contribution": "-2"
   },
   {
    "strike": "66,500",
    "prev": "2,232",
-   "today": "2,232",
-   "diff": "+0",
-   "price": "2,725",
-   "moneyness": "1.016",
-   "delta": "-0.558",
-   "contribution": "+0"
-  },
-  {
-   "strike": "66,000",
-   "prev": "2,407",
-   "today": "2,389",
-   "diff": "-18",
-   "price": "2,460",
-   "moneyness": "1.008",
-   "delta": "-0.522",
-   "contribution": "-9"
-  },
-  {
-   "strike": "65,500",
-   "prev": "803",
-   "today": "807",
-   "diff": "+4",
-   "price": "2,235",
-   "moneyness": "1.000",
-   "delta": "-0.485",
-   "contribution": "+2"
-  },
-  {
-   "strike": "65,000",
-   "prev": "3,553",
-   "today": "3,644",
-   "diff": "+91",
-   "price": "2,035",
-   "moneyness": "0.993",
-   "delta": "-0.450",
-   "contribution": "+41"
-  },
-  {
-   "strike": "64,500",
-   "prev": "657",
-   "today": "659",
-   "diff": "+2",
-   "price": "1,810",
-   "moneyness": "0.985",
-   "delta": "-0.415",
-   "contribution": "+1"
-  },
-  {
-   "strike": "64,000",
-   "prev": "3,045",
-   "today": "3,154",
-   "diff": "+109",
-   "price": "1,670",
-   "moneyness": "0.978",
-   "delta": "-0.383",
-   "contribution": "+42"
-  },
-  {
-   "strike": "63,500",
-   "prev": "800",
-   "today": "924",
-   "diff": "+124",
-   "price": "1,450",
-   "moneyness": "0.970",
-   "delta": "-0.350",
-   "contribution": "+43"
-  },
-  {
-   "strike": "63,000",
-   "prev": "3,584",
-   "today": "3,761",
-   "diff": "+177",
-   "price": "1,315",
-   "moneyness": "0.962",
-   "delta": "-0.321",
-   "contribution": "+57"
-  },
-  {
-   "strike": "62,500",
-   "prev": "789",
-   "today": "861",
-   "diff": "+72",
-   "price": "1,160",
-   "moneyness": "0.955",
-   "delta": "-0.291",
-   "contribution": "+21"
-  },
-  {
-   "strike": "62,000",
-   "prev": "2,982",
-   "today": "2,989",
-   "diff": "+7",
-   "price": "1,035",
-   "moneyness": "0.947",
-   "delta": "-0.265",
-   "contribution": "+2"
-  },
-  {
-   "strike": "61,500",
-   "prev": "1,555",
-   "today": "1,552",
-   "diff": "-3",
-   "price": "925",
-   "moneyness": "0.939",
-   "delta": "-0.240",
+   "today": "2,230",
+   "diff": "-2",
+   "price": "2,080",
+   "moneyness": "1.002",
+   "delta": "-0.497",
    "contribution": "-1"
   },
   {
+   "strike": "66,000",
+   "prev": "2,389",
+   "today": "2,397",
+   "diff": "+8",
+   "price": "1,890",
+   "moneyness": "0.995",
+   "delta": "-0.457",
+   "contribution": "+4"
+  },
+  {
+   "strike": "65,500",
+   "prev": "807",
+   "today": "809",
+   "diff": "+2",
+   "price": "1,655",
+   "moneyness": "0.987",
+   "delta": "-0.419",
+   "contribution": "+1"
+  },
+  {
+   "strike": "65,000",
+   "prev": "3,644",
+   "today": "3,626",
+   "diff": "-18",
+   "price": "1,465",
+   "moneyness": "0.980",
+   "delta": "-0.382",
+   "contribution": "-7"
+  },
+  {
+   "strike": "64,500",
+   "prev": "659",
+   "today": "666",
+   "diff": "+7",
+   "price": "1,295",
+   "moneyness": "0.972",
+   "delta": "-0.347",
+   "contribution": "+2"
+  },
+  {
+   "strike": "64,000",
+   "prev": "3,154",
+   "today": "3,156",
+   "diff": "+2",
+   "price": "1,145",
+   "moneyness": "0.965",
+   "delta": "-0.314",
+   "contribution": "+1"
+  },
+  {
+   "strike": "63,500",
+   "prev": "924",
+   "today": "924",
+   "diff": "+0",
+   "price": "1,005",
+   "moneyness": "0.957",
+   "delta": "-0.283",
+   "contribution": "+0"
+  },
+  {
+   "strike": "63,000",
+   "prev": "3,761",
+   "today": "3,764",
+   "diff": "+3",
+   "price": "900",
+   "moneyness": "0.949",
+   "delta": "-0.256",
+   "contribution": "+1"
+  },
+  {
+   "strike": "62,500",
+   "prev": "861",
+   "today": "869",
+   "diff": "+8",
+   "price": "775",
+   "moneyness": "0.942",
+   "delta": "-0.227",
+   "contribution": "+2"
+  },
+  {
+   "strike": "62,000",
+   "prev": "2,989",
+   "today": "2,969",
+   "diff": "-20",
+   "price": "685",
+   "moneyness": "0.934",
+   "delta": "-0.204",
+   "contribution": "-4"
+  },
+  {
+   "strike": "61,500",
+   "prev": "1,552",
+   "today": "1,552",
+   "diff": "+0",
+   "price": "605",
+   "moneyness": "0.927",
+   "delta": "-0.182",
+   "contribution": "+0"
+  },
+  {
    "strike": "61,000",
-   "prev": "2,444",
-   "today": "2,494",
-   "diff": "+50",
-   "price": "835",
-   "moneyness": "0.932",
-   "delta": "-0.219",
-   "contribution": "+11"
+   "prev": "2,494",
+   "today": "2,499",
+   "diff": "+5",
+   "price": "535",
+   "moneyness": "0.919",
+   "delta": "-0.163",
+   "contribution": "+1"
   },
   {
    "strike": "60,500",
-   "prev": "1,053",
-   "today": "1,081",
-   "diff": "+28",
-   "price": "735",
-   "moneyness": "0.924",
-   "delta": "-0.197",
-   "contribution": "+6"
+   "prev": "1,081",
+   "today": "1,085",
+   "diff": "+4",
+   "price": "470",
+   "moneyness": "0.912",
+   "delta": "-0.145",
+   "contribution": "+1"
   },
   {
    "strike": "60,000",
-   "prev": "9,531",
-   "today": "10,224",
-   "diff": "+693",
-   "price": "640",
-   "moneyness": "0.916",
-   "delta": "-0.175",
-   "contribution": "+122"
+   "prev": "10,224",
+   "today": "10,523",
+   "diff": "+299",
+   "price": "415",
+   "moneyness": "0.904",
+   "delta": "-0.129",
+   "contribution": "+39"
   },
   {
    "strike": "59,500",
    "prev": "883",
-   "today": "883",
-   "diff": "+0",
-   "price": "585",
-   "moneyness": "0.909",
-   "delta": "-0.160",
-   "contribution": "+0"
-  },
-  {
-   "strike": "59,000",
-   "prev": "3,324",
-   "today": "3,517",
-   "diff": "+193",
-   "price": "530",
-   "moneyness": "0.901",
-   "delta": "-0.145",
-   "contribution": "+28"
-  },
-  {
-   "strike": "58,500",
-   "prev": "1,203",
-   "today": "1,576",
-   "diff": "+373",
-   "price": "465",
-   "moneyness": "0.894",
-   "delta": "-0.130",
-   "contribution": "+48"
-  },
-  {
-   "strike": "58,000",
-   "prev": "2,241",
-   "today": "2,353",
-   "diff": "+112",
-   "price": "415",
-   "moneyness": "0.886",
-   "delta": "-0.116",
-   "contribution": "+13"
-  },
-  {
-   "strike": "57,500",
-   "prev": "485",
-   "today": "494",
-   "diff": "+9",
-   "price": "380",
-   "moneyness": "0.878",
-   "delta": "-0.106",
+   "today": "888",
+   "diff": "+5",
+   "price": "365",
+   "moneyness": "0.897",
+   "delta": "-0.115",
    "contribution": "+1"
   },
   {
-   "strike": "57,000",
-   "prev": "2,843",
-   "today": "2,996",
-   "diff": "+153",
-   "price": "340",
-   "moneyness": "0.871",
-   "delta": "-0.096",
-   "contribution": "+15"
-  },
-  {
-   "strike": "56,500",
-   "prev": "812",
-   "today": "815",
+   "strike": "59,000",
+   "prev": "3,517",
+   "today": "3,520",
    "diff": "+3",
-   "price": "300",
-   "moneyness": "0.863",
-   "delta": "-0.085",
+   "price": "330",
+   "moneyness": "0.889",
+   "delta": "-0.103",
    "contribution": "+0"
   },
   {
+   "strike": "58,500",
+   "prev": "1,576",
+   "today": "1,687",
+   "diff": "+111",
+   "price": "289",
+   "moneyness": "0.882",
+   "delta": "-0.092",
+   "contribution": "+10"
+  },
+  {
+   "strike": "58,000",
+   "prev": "2,353",
+   "today": "2,356",
+   "diff": "+3",
+   "price": "256",
+   "moneyness": "0.874",
+   "delta": "-0.081",
+   "contribution": "+0"
+  },
+  {
+   "strike": "57,500",
+   "prev": "494",
+   "today": "488",
+   "diff": "-6",
+   "price": "231",
+   "moneyness": "0.867",
+   "delta": "-0.073",
+   "contribution": "+0"
+  },
+  {
+   "strike": "57,000",
+   "prev": "2,996",
+   "today": "3,013",
+   "diff": "+17",
+   "price": "209",
+   "moneyness": "0.859",
+   "delta": "-0.066",
+   "contribution": "+1"
+  },
+  {
+   "strike": "56,500",
+   "prev": "815",
+   "today": "826",
+   "diff": "+11",
+   "price": "187",
+   "moneyness": "0.851",
+   "delta": "-0.059",
+   "contribution": "+1"
+  },
+  {
    "strike": "56,000",
-   "prev": "1,846",
-   "today": "1,830",
-   "diff": "-16",
-   "price": "277",
-   "moneyness": "0.855",
-   "delta": "-0.078",
-   "contribution": "-1"
-  },
-  {
-   "strike": "55,500",
-   "prev": "796",
-   "today": "763",
-   "diff": "-33",
-   "price": "244",
-   "moneyness": "0.848",
-   "delta": "-0.069",
-   "contribution": "-2"
-  },
-  {
-   "strike": "55,000",
-   "prev": "4,432",
-   "today": "4,428",
-   "diff": "-4",
-   "price": "223",
-   "moneyness": "0.840",
-   "delta": "-0.063",
+   "prev": "1,830",
+   "today": "1,833",
+   "diff": "+3",
+   "price": "169",
+   "moneyness": "0.844",
+   "delta": "-0.053",
    "contribution": "+0"
   }
  ],
@@ -1493,32 +1500,32 @@ const SQ_DATA = {
   {
    "id": "gex_flip",
    "metric": "gex_flip",
-   "value": 67312.0,
+   "value": 67098.0,
    "star": true,
-   "label": "GEXフリップ 67,312 と現値の位置関係（最優先）",
-   "rule": "現値 F=65,470 はフリップの 1,842円下。回復すればロングガンマに戻り押し目吸収が復活、割れば加速する。フリップとの距離が ±300円 以内の間は方向はどちらにも転びうる。"
+   "label": "GEXフリップ 67,098 と現値の位置関係（最優先）",
+   "rule": "現値 F=66,355 はフリップの 743円下。回復すればロングガンマに戻り押し目吸収が復活、割れば加速する。フリップとの距離が ±300円 以内の間は方向はどちらにも転びうる。"
   },
   {
    "id": "gex_at_atm",
    "metric": "gex_at_atm",
-   "value": -347.4,
-   "label": "Net GEX at ATM -347.4億円",
+   "value": -157.5,
+   "label": "Net GEX at ATM -157.5億円",
    "rule": "符号が反転すればレジーム転換。ゼロ近傍はどちらにも振れやすい。"
   },
   {
    "id": "put_effective_delta",
    "metric": "put_effective_delta",
-   "value": 22432.0,
+   "value": 18610.0,
    "star": true,
-   "label": "PUTブック実効デルタ 22,432枚",
-   "rule": "判定はポジション要因で行う。本日は +408枚相当。翌日も必ず3分解し、ポジション要因が +500枚超なら本物の積み増し、マイナスなら『相場が戻って自動的に減っただけ』と区別する。"
+   "label": "PUTブック実効デルタ 18,610枚",
+   "rule": "判定はポジション要因で行う。本日は +69枚相当。翌日も必ず3分解し、ポジション要因が +500枚超なら本物の積み増し、マイナスなら『相場が戻って自動的に減っただけ』と区別する。"
   },
   {
    "id": "rr25",
    "metric": "rr25",
-   "value": 5.9,
+   "value": 4.84,
    "star": true,
-   "label": "RR25 +5.90 の駆動側（25dP 37.43／25dC 31.53）",
+   "label": "RR25 +4.84 の駆動側（25dP 34.28／25dC 29.44）",
    "rule": "PUT側が下がって縮小＝恐怖の後退（本物）／CALL側が上がって縮小＝上値追いの再開。+6.0 超に拡大したらパニック域、+4.0 割れで正常化。",
    "hi": 6.0,
    "hi_means": "パニック域",
@@ -1527,28 +1534,28 @@ const SQ_DATA = {
   },
   {
    "id": "upper_wall_oi",
-   "metric": "wall_oi_call_70000",
-   "value": 6036,
+   "metric": "wall_oi_call_67000",
+   "value": 4611,
    "star": true,
-   "label": "上値の蓋 70,000 帯の建玉（±375円で 6,036枚）",
-   "rule": "枚数で見る。名目金額は現値との距離で機械的に動くため閾値には使わない。6,941枚超で蓋の強化／5,131枚割れで蓋が外れた。",
-   "hi": 6941.4,
+   "label": "上値の蓋 67,000 帯の建玉（±375円で 4,611枚）",
+   "rule": "枚数で見る。名目金額は現値との距離で機械的に動くため閾値には使わない。5,303枚超で蓋の強化／3,919枚割れで蓋が外れた。",
+   "hi": 5302.65,
    "hi_means": "蓋の強化",
-   "lo": 5130.599999999999,
+   "lo": 3919.35,
    "lo_means": "蓋が外れた"
   },
   {
    "id": "lower_wall_oi",
    "metric": "wall_oi_put_60000",
-   "value": 10368,
-   "label": "下値の主戦場 60,000（建玉 10,368枚・名目66.4億・スコア76.5）",
+   "value": 10679,
+   "label": "下値の主戦場 60,000（建玉 10,679枚・名目44.3億・スコア74.1）",
    "rule": "さらに積み増されれば防衛の意思／減れば防衛の放棄。"
   },
   {
    "id": "cal_spread",
    "metric": "cal_spread",
-   "value": 1.54,
-   "label": "26-09 と 26-10 の ATM IV スプレッド +1.54pt",
+   "value": 0.88,
+   "label": "26-09 と 26-10 の ATM IV スプレッド +0.88pt",
    "rule": "負＝コンタンゴ（期先が高い）。コンタンゴが 2.0pt 超に拡大すればSQ後リスクの織り込みは本物／バックへ戻れば急落局面の一時的な現象。",
    "lo": -2.0,
    "lo_means": "SQ後リスクの織り込みが本物"
@@ -1556,107 +1563,106 @@ const SQ_DATA = {
   {
    "id": "cross_check",
    "metric": "cross_check",
-   "value": -683.0,
-   "label": "手法クロスチェックの乖離 -683円",
+   "value": 244.0,
+   "label": "手法クロスチェックの乖離 +244円",
    "rule": "±500円 以内に戻るまで、SQ帯・implied中央値を判断に使わない。"
   },
   {
    "id": "max_pain_slope",
    "metric": "max_pain_slope",
-   "value": 9.9,
-   "label": "max_pain 63,500 の傾き 9.9%",
+   "value": 10.0,
+   "label": "max_pain 63,500 の傾き 10.0%",
    "rule": "5%割れなら引力は無視可。上昇すれば引力が復活。"
   }
  ],
  "answer_check": [
   {
-   "label": "GEXフリップ 67,327 と現値の位置関係（最優先）",
-   "before": "67,327.00",
-   "now": "67,312.00",
-   "diff": "-15.00",
+   "label": "GEXフリップ 67,312 と現値の位置関係（最優先）",
+   "before": "67,312.00",
+   "now": "67,098.00",
+   "diff": "-214.00",
    "verdict": "閾値には未到達",
-   "rule": "現値 F=67,540 はフリップの 213円上。回復すればロングガンマに戻り押し目吸収が復活、割れば加速する。フリップとの距離が ±300円 以内の間は方向はどちらにも転びうる。"
+   "rule": "現値 F=65,470 はフリップの 1,842円下。回復すればロングガンマに戻り押し目吸収が復活、割れば加速する。フリップとの距離が ±300円 以内の間は方向はどちらにも転びうる。"
   },
   {
-   "label": "Net GEX at ATM +43.1億円",
-   "before": "43.10",
-   "now": "-347.40",
-   "diff": "-390.50",
-   "verdict": "★符号が反転（＋→−）",
+   "label": "Net GEX at ATM -347.4億円",
+   "before": "-347.40",
+   "now": "-157.50",
+   "diff": "+189.90",
+   "verdict": "閾値には未到達",
    "rule": "符号が反転すればレジーム転換。ゼロ近傍はどちらにも振れやすい。"
   },
   {
-   "label": "PUTブック実効デルタ 14,885枚",
-   "before": "14,885.00",
-   "now": "22,432.00",
-   "diff": "+7,547.00",
+   "label": "PUTブック実効デルタ 22,432枚",
+   "before": "22,432.00",
+   "now": "18,610.00",
+   "diff": "-3,822.00",
    "verdict": "閾値には未到達",
-   "rule": "判定はポジション要因で行う。本日は —枚相当。翌日も必ず3分解し、ポジション要因が +500枚超なら本物の積み増し、マイナスなら『相場が戻って自動的に減っただけ』と区別する。"
+   "rule": "判定はポジション要因で行う。本日は +408枚相当。翌日も必ず3分解し、ポジション要因が +500枚超なら本物の積み増し、マイナスなら『相場が戻って自動的に減っただけ』と区別する。"
   },
   {
-   "label": "RR25 +4.50 の駆動側（25dP 32.44／25dC 27.94）",
-   "before": "4.50",
-   "now": "5.90",
-   "diff": "+1.40",
+   "label": "RR25 +5.90 の駆動側（25dP 37.43／25dC 31.53）",
+   "before": "5.90",
+   "now": "4.84",
+   "diff": "-1.06",
    "verdict": "閾値には未到達",
    "rule": "PUT側が下がって縮小＝恐怖の後退（本物）／CALL側が上がって縮小＝上値追いの再開。+6.0 超に拡大したらパニック域、+4.0 割れで正常化。"
   },
   {
-   "label": "上値の蓋 70,000 帯の建玉（±375円で 5,608枚）",
-   "before": "5,608.00",
-   "now": "6,036.00",
-   "diff": "+428.00",
+   "label": "上値の蓋 70,000 帯の建玉（±375円で 6,036枚）",
+   "before": "6,036.00",
+   "now": "5,963.00",
+   "diff": "-73.00",
    "verdict": "閾値には未到達",
-   "rule": "枚数で見る。名目金額は現値との距離で機械的に動くため閾値には使わない。6,449枚超で蓋の強化／4,767枚割れで蓋が外れた。"
+   "rule": "枚数で見る。名目金額は現値との距離で機械的に動くため閾値には使わない。6,941枚超で蓋の強化／5,131枚割れで蓋が外れた。"
   },
   {
-   "label": "下値の主戦場 60,000（建玉 9,676枚・名目31.0億・スコア68.5）",
-   "before": "9,676.00",
-   "now": "10,368.00",
-   "diff": "+692.00",
+   "label": "下値の主戦場 60,000（建玉 10,368枚・名目66.4億・スコア76.5）",
+   "before": "10,368.00",
+   "now": "10,679.00",
+   "diff": "+311.00",
    "verdict": "閾値には未到達",
    "rule": "さらに積み増されれば防衛の意思／減れば防衛の放棄。"
   },
   {
-   "label": "26-09 と 26-10 の ATM IV スプレッド +0.01pt",
-   "before": "0.01",
-   "now": "1.54",
-   "diff": "+1.53",
+   "label": "26-09 と 26-10 の ATM IV スプレッド +1.54pt",
+   "before": "1.54",
+   "now": "0.88",
+   "diff": "-0.66",
    "verdict": "閾値には未到達",
    "rule": "負＝コンタンゴ（期先が高い）。コンタンゴが 2.0pt 超に拡大すればSQ後リスクの織り込みは本物／バックへ戻れば急落局面の一時的な現象。"
   },
   {
-   "label": "手法クロスチェックの乖離 +0円",
-   "before": "0.00",
-   "now": "-683.00",
-   "diff": "-683.00",
-   "verdict": "閾値には未到達",
+   "label": "手法クロスチェックの乖離 -683円",
+   "before": "-683.00",
+   "now": "244.00",
+   "diff": "+927.00",
+   "verdict": "★符号が反転（−→＋）",
    "rule": "±500円 以内に戻るまで、SQ帯・implied中央値を判断に使わない。"
   },
   {
-   "label": "max_pain 63,125 の傾き 9.4%",
-   "before": "9.40",
-   "now": "9.90",
-   "diff": "+0.50",
+   "label": "max_pain 63,500 の傾き 9.9%",
+   "before": "9.90",
+   "now": "10.00",
+   "diff": "+0.10",
    "verdict": "閾値には未到達",
    "rule": "5%割れなら引力は無視可。上昇すれば引力が復活。"
   }
  ],
  "limits": [
-  "残17営業日でのSQ値予測は原理的に不可能。中心点 65,470 は参考値であって予測ではない。",
+  "残16営業日でのSQ値予測は原理的に不可能。中心点 66,355 は参考値であって予測ではない。",
   "Net GEX は「ディーラー = +CALL建玉 − PUT建玉」の慣例仮定に依存する。仮定が崩れる局面では符号が反転しうる。",
   "壁スコアは建玉・名目金額・現値からの近さを合成した独自の相対指標で、絶対的な意味を持たない。同じ日の中での序列としてのみ使う。",
   "IVは清算値段からの逆算値。板が薄い行使価格では解が不安定になる。",
-  "手法クロスチェックが目安（±500円）を超えており、SQ帯の信頼度が低い。",
   "日経VIが未取得。恐怖ゲージは板由来のRR25・BF25・ATM IVのみで判定している。",
   "参加者別ネット建玉は週次公表で、証券会社単位・売超買超それぞれ上位15社のみ。市場全体の集計ではなく、自己玉と顧客玉も区別できない。",
   "実効デルタの3分解のうち、現値移動要因と時間経過要因は分離していない（合算）。",
-  "IV列の崩壊が 5/108本ある。深いOTMのIV・デルタはその分不確かである。"
+  "IV列の崩壊が 6/106本ある。深いOTMのIV・デルタはその分不確かである。"
  ],
  "participants": {
   "available": true,
   "as_of": "2026-08-14",
-  "lag_days": 5,
+  "lag_days": 6,
   "origin": "20260814_indexfut_oi_by_tp.xlsx",
   "months": [
    "26-09",
@@ -1787,42 +1793,42 @@ const SQ_DATA = {
   "stale": true
  },
  "metrics": {
-  "forward": 65470.0,
-  "atm_strike": 65500.0,
-  "atm_iv": 33.72,
-  "far_atm_iv": 32.19,
-  "cal_spread": 1.54,
-  "sigma_abs": 5542.0,
-  "rr25": 5.9,
-  "bf25": 0.76,
-  "put25_iv": 37.43,
-  "call25_iv": 31.53,
-  "gex_at_atm": -347.4,
-  "gex_flip": 67312.0,
+  "forward": 66355.0,
+  "atm_strike": 66375.0,
+  "atm_iv": 31.09,
+  "far_atm_iv": 30.22,
+  "cal_spread": 0.88,
+  "sigma_abs": 5065.0,
+  "rr25": 4.84,
+  "bf25": 0.77,
+  "put25_iv": 34.28,
+  "call25_iv": 29.44,
+  "gex_at_atm": -157.5,
+  "gex_flip": 67098.0,
   "gex_regime": "ショートガンマ",
-  "put_effective_delta": 22432.0,
-  "put_premium_oku": 1021.5,
-  "put_vega_oku": 38.29,
-  "put_junk_oi": 19514,
-  "put_junk_ratio": 13.8,
+  "put_effective_delta": 18610.0,
+  "put_premium_oku": 743.9,
+  "put_vega_oku": 33.46,
+  "put_junk_oi": 29765,
+  "put_junk_ratio": 20.9,
   "max_pain": 63500.0,
-  "max_pain_slope": 9.9,
+  "max_pain_slope": 10.0,
   "condor_lower": 60000.0,
-  "condor_upper": 70000.0,
-  "condor_width": 10000.0,
-  "cross_check": -683.0,
-  "prob_in_condor": 68.2,
-  "call_oi_total": 80001,
-  "put_oi_total": 141777,
+  "condor_upper": 67000.0,
+  "condor_width": 7000.0,
+  "cross_check": 244.0,
+  "prob_in_condor": 80.0,
+  "call_oi_total": 80821,
+  "put_oi_total": 142559,
   "nikkei_vi": null,
-  "spot_close": 65326.42,
-  "iv_broken": 5,
-  "iv_evaluated": 108,
+  "spot_close": 66216.79,
+  "iv_broken": 6,
+  "iv_evaluated": 106,
   "no_price_call_oi": 0,
   "no_price_put_oi": 0,
   "window_lo": 20000.0,
   "window_hi": 100000.0,
-  "strike_count": 284,
+  "strike_count": 287,
   "strike_count_listed": 295
  }
 };
