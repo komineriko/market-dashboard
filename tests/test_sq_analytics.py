@@ -302,6 +302,93 @@ class TestComposite(unittest.TestCase):
             self.assertGreater(pcr, 1)
 
 
+class TestSummary(unittest.TestCase):
+    """初心者向けのひとことまとめ。数字は本文と同じで、言い換えだけを行う。"""
+
+    def setUp(self):
+        import sq_report as sr
+        from datetime import date
+        import sq_fetch as sf
+        self.sr, self.sf, self.date = sr, sf, date
+        self.chain = build_chain()
+        self.a = sr.MonthAnalysis(self.chain, 67500, date(2026, 8, 18))
+        self.m = sr.flatten_metrics(self.a, None, None, None)
+
+    def _summary(self, pm=None, spot=None, decomp=None):
+        return self.sr.build_summary(self.a, self.m, pm, spot, decomp)
+
+    def test_headline_follows_regime(self):
+        su = self._summary()
+        if self.m["gex_regime"] == "ショートガンマ":
+            self.assertIn("増幅", su["headline"])
+            self.assertEqual(su["level"], "warn")
+        else:
+            self.assertIn("吸収", su["headline"])
+            self.assertEqual(su["level"], "ok")
+
+    def test_no_jargon_in_headline(self):
+        """見出しに専門用語を出さない。"""
+        su = self._summary()
+        for word in ("ガンマ", "GEX", "デルタ", "IV", "スキュー"):
+            self.assertNotIn(word, su["headline"])
+            self.assertNotIn(word, su["sub"])
+
+    def test_levels_are_sorted_and_labelled(self):
+        su = self._summary()
+        vals = [l["value"] for l in su["levels"]]
+        self.assertEqual(vals, sorted(vals, reverse=True))
+        keys = {l["key"] for l in su["levels"]}
+        self.assertIn("now", keys)
+        self.assertIn("flip", keys)
+        for l in su["levels"]:
+            self.assertTrue(l["label"])
+            self.assertTrue(l["display"])
+
+    def test_countdown_and_disclaimer(self):
+        su = self._summary()
+        self.assertIn("SQまであと", su["countdown"])
+        self.assertIn("予測ではない", su["disclaimer"])
+
+    def test_market_line_uses_spot(self):
+        spot = self.sf.SpotQuote(close=66216.79, prev_close=65326.42,
+                                 change=890.37, change_pct=1.36)
+        su = self._summary(spot=spot)
+        market = next(p for p in su["points"] if p["label"] == "相場")
+        self.assertIn("66,217", market["text"])
+        self.assertIn("上げ", market["text"])
+
+    def test_alert_direction(self):
+        # 前日を今日より高くすると「和らいだ」、低くすると「強まった」になること
+        eased = self._summary(pm={**self.m, "rr25": self.m["rr25"] + 2.0})
+        text = next(p for p in eased["points"] if p["label"] == "警戒度")["text"]
+        self.assertIn("和らいだ", text)
+
+        worse = self._summary(pm={**self.m, "rr25": self.m["rr25"] - 2.0})
+        text = next(p for p in worse["points"] if p["label"] == "警戒度")["text"]
+        self.assertIn("強まった", text)
+
+        flat = self._summary(pm={**self.m, "rr25": self.m["rr25"] + 0.1})
+        text = next(p for p in flat["points"] if p["label"] == "警戒度")["text"]
+        self.assertIn("横ばい", text)
+
+    def test_insurance_line_distinguishes_position_from_spot_move(self):
+        import sq_analytics as sa
+        prev = build_chain()
+        book = sa.put_book(self.chain, self.a.curve, self.a.forward)
+        # 建玉が同じで現値だけ動いた状況＝ポジション要因ゼロ
+        dec = sa.decompose_effective_delta(self.chain, prev, book,
+                                           book.effective_delta - 3000)
+        su = self._summary(decomp=dec)
+        ins = next(p for p in su["points"] if p["label"] == "保険の動き")
+        self.assertIn("新しい売買はほとんど無く", ins["text"])
+
+    def test_stays_within_about_twenty_lines(self):
+        """ぱっと見で読める分量に収まっていること。"""
+        su = self._summary()
+        lines = 2 + len(su["levels"]) + len(su["points"]) + 2
+        self.assertLessEqual(lines, 20, f"まとめが長すぎる: {lines}行相当")
+
+
 class TestAnswerCheck(unittest.TestCase):
     """監視ポイントの自動評価。"""
 

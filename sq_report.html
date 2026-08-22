@@ -66,6 +66,55 @@
   .gex .val{text-align:right;color:var(--text-dim);}
   .gex .row.flip .lv{color:var(--warn);font-weight:700;}
 
+  /* ひとことまとめ */
+  .sum{background:var(--card);border:1px solid var(--card-border);border-radius:10px;
+    padding:16px 18px;margin-bottom:14px;}
+  .sum .head{display:flex;align-items:baseline;justify-content:space-between;
+    flex-wrap:wrap;gap:8px;margin-bottom:4px;}
+  .sum .state{font-size:17px;font-weight:700;}
+  .sum .state.warn{color:var(--warn);} .sum .state.ok{color:var(--up);}
+  .sum .cd{font-size:12px;color:var(--text-faint);}
+  .sum .sub{font-size:12.5px;color:var(--text-dim);line-height:1.7;margin-bottom:14px;}
+  .sum ul{list-style:none;padding:0;margin:0;font-size:13px;line-height:1.85;}
+  .sum ul li{display:grid;grid-template-columns:78px 1fr;gap:10px;padding:2px 0;}
+  .sum ul li b{color:var(--text-faint);font-size:12px;font-weight:600;padding-top:2px;}
+  .sum .note{font-size:12px;color:var(--text-faint);line-height:1.75;margin-top:12px;
+    padding-top:10px;border-top:1px solid var(--card-border);}
+
+  /* 価格のはしご図。ゾーンは色だけでなく文字でも示す（色覚に依存させない） */
+  .ladder{position:relative;height:210px;margin:6px 0 16px;}
+  .ladder .zone{position:absolute;left:96px;right:0;border-radius:4px;}
+  .ladder .zone.calm{background:rgba(47,212,128,0.10);}
+  .ladder .zone.amp{background:rgba(255,93,108,0.10);}
+  .ladder-legend{display:flex;flex-wrap:wrap;gap:6px 20px;margin:-6px 0 14px 96px;
+    font-size:11.5px;color:var(--text-faint);}
+  .ladder-legend span{display:inline-flex;align-items:center;gap:6px;}
+  .ladder-legend i{width:10px;height:10px;border-radius:2px;display:inline-block;}
+  .ladder-legend i.calm{background:rgba(47,212,128,0.45);}
+  .ladder-legend i.amp{background:rgba(255,93,108,0.45);}
+  .ladder-legend em{font-style:normal;}
+  .ladder .lv{position:absolute;left:0;right:0;transform:translateY(-50%);
+    display:grid;grid-template-columns:88px 1fr;gap:8px;align-items:center;}
+  .ladder .lv .px{text-align:right;font-size:12.5px;color:var(--text-dim);
+    font-variant-numeric:tabular-nums;}
+  .ladder .lv .bar{position:relative;height:0;border-top:1px dashed var(--card-border);}
+  .ladder .lv .bar b{position:absolute;left:6px;top:-9px;font-size:11.5px;
+    font-weight:600;color:var(--text-dim);background:var(--card);padding:0 5px;}
+  .ladder .lv.flip .bar{border-top:2px solid var(--warn);}
+  .ladder .lv.flip .px, .ladder .lv.flip .bar b{color:var(--warn);}
+  .ladder .lv.now .bar{border-top:2px solid var(--accent);}
+  .ladder .lv.now .px{color:var(--text);font-weight:700;}
+  .ladder .lv.now .bar b{color:var(--accent);}
+  .ladder .lv.now .bar:after{content:"";position:absolute;left:0;top:-4px;
+    width:8px;height:8px;border-radius:50%;background:var(--accent);}
+  @media (max-width:640px){
+    .sum ul li{grid-template-columns:1fr;gap:0;}
+    .sum ul li b{padding-top:8px;}
+    .ladder .zone{left:78px;}
+    .ladder .lv{grid-template-columns:70px 1fr;}
+    .ladder-legend{margin-left:0;}
+  }
+
   ol.limits{font-size:12.5px;color:var(--text-dim);line-height:1.9;padding-left:22px;margin:6px 0;}
   ol.limits li{margin-bottom:5px;}
   .watch li{margin-bottom:12px;}
@@ -1879,6 +1928,78 @@ function table(cols, rows){
 
 function section(title){ return $('h2', null, title); }
 
+/* 価格のはしご図。
+   上下のゾーンは色だけでなく文字でも示す。赤と緑は色覚多様性で見分けが
+   つきにくく（検証で ΔE 6.3）、色に意味を担わせられないため。
+   水準が近接するとラベルが重なるので、最小間隔を確保して押し広げる。
+   その分だけ位置は厳密でなくなるので、正確な数値は各行に併記する。 */
+function ladder(su){
+  const box = $('div','ladder');
+  const levels = (su.levels || []).filter(l => typeof l.value === 'number');
+  if (!levels.length) return box;
+
+  const H = 210, MIN_GAP = 30;
+  const vals = levels.map(l => l.value);
+  const hi = Math.max(...vals), lo = Math.min(...vals);
+  const pad = Math.max((hi - lo) * 0.12, 1);
+  const top = hi + pad, bottom = lo - pad;
+  const rawPx = v => (top - v) / (top - bottom) * H;
+
+  // 上から順に、最小間隔を満たすまで下へ押す → はみ出したぶんを上へ押し返す
+  const items = levels.map(l => ({...l, y: rawPx(l.value)}))
+                      .sort((a, b) => a.y - b.y);
+  for (let i = 1; i < items.length; i++){
+    items[i].y = Math.max(items[i].y, items[i - 1].y + MIN_GAP);
+  }
+  const overflow = items[items.length - 1].y - (H - 6);
+  if (overflow > 0){
+    for (let i = items.length - 1; i >= 0; i--){
+      items[i].y -= overflow;
+      if (i > 0) items[i - 1].y = Math.min(items[i - 1].y, items[i].y - MIN_GAP);
+    }
+  }
+  items.forEach(it => { it.y = Math.max(6, Math.min(H - 6, it.y)); });
+
+  // ゾーンの境目は、描画した切替ラインの位置に合わせる
+  const flipItem = items.find(it => it.key === 'flip');
+  if (flipItem){
+    const fp = flipItem.y / H * 100;
+    const zones = [['calm', 0, fp], ['amp', fp, 100]];
+    zones.forEach(([cls, from, to]) => {
+      const z = $('div','zone ' + cls);
+      z.style.top = from + '%';
+      z.style.height = (to - from) + '%';
+      box.appendChild(z);
+    });
+  }
+
+  items.forEach(l => {
+    const row = $('div','lv ' + (l.key === 'now' ? 'now' : (l.key === 'flip' ? 'flip' : '')));
+    row.style.top = l.y + 'px';
+    row.appendChild($('div','px', l.display));
+    const bar = $('div','bar');
+    bar.appendChild($('b', null, l.label));
+    row.appendChild(bar);
+    box.appendChild(row);
+  });
+
+  // 凡例は帯の外に出す。帯が薄いと中の文字が消えてしまうため。
+  const wrap = $('div');
+  wrap.appendChild(box);
+  if (flipItem){
+    const lg = $('div','ladder-legend');
+    [['calm', '切替ラインより上 → 値動きが収まりやすい'],
+     ['amp', '切替ラインより下 → 値動きが増幅されやすい']].forEach(([cls, text]) => {
+      const item = $('span');
+      item.appendChild($('i', cls));
+      item.appendChild($('em', null, text));
+      lg.appendChild(item);
+    });
+    wrap.appendChild(lg);
+  }
+  return wrap;
+}
+
 function kv(pairs){
   const box = $('div','card');
   const grid = $('div','kv');
@@ -1937,6 +2058,30 @@ function render(d){
     `生成 ${m.generated_at}　データ: ${m.origin || '—'}` +
     (m.has_prev ? '' : '　※前日スナップショットが無いため、前日比・答え合わせは次回から')));
   app.appendChild(head);
+
+  /* ---- ひとことまとめ ---- */
+  if (d.summary){
+    const su = d.summary;
+    app.appendChild(section('ひとことまとめ'));
+    const box = $('div','sum');
+    const head = $('div','head');
+    head.appendChild($('div','state ' + (su.level === 'warn' ? 'warn' : 'ok'),
+      (su.level === 'warn' ? '⚠ ' : '✓ ') + su.headline));
+    head.appendChild($('div','cd', su.countdown));
+    box.appendChild(head);
+    box.appendChild($('div','sub', su.sub));
+    box.appendChild(ladder(su));
+    const ul = $('ul');
+    (su.points || []).forEach(pt => {
+      const li = $('li');
+      li.appendChild($('b', null, pt.label));
+      li.appendChild($('div', null, pt.text));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    box.appendChild($('div','note', '※ ' + su.disclaimer));
+    app.appendChild(box);
+  }
 
   /* ---- 結論 ---- */
   app.appendChild(section('【結論】'));

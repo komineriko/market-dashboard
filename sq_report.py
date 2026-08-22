@@ -983,6 +983,7 @@ def build_report(chains: Dict[str, sa.Chain], spot, vi: Optional[float],
             "sources": list(extra_sources or []),
             "has_prev": prev_chain is not None,
         },
+        "summary": build_summary(a, metrics, prev_metrics, spot, decomp),
         "conclusion": build_conclusion(a, far, metrics, prev_metrics, window, decomp, spot, vi),
         "disclosures": build_disclosures(a, prev_metrics, window, spot, vi_source, spot_move),
         "sq_band": {
@@ -1105,4 +1106,104 @@ def participant_snapshot(psrc, months: Sequence[str]) -> Optional[Dict[str, Any]
     return {
         "as_of": psrc.as_of.isoformat(),
         "net": {name: round(net, 1) for name, net, _ in sa_aggregate(psrc.rows, None)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# ひとことまとめ（専門用語を使わない要約）
+# ---------------------------------------------------------------------------
+#
+# レポート本文は専門用語で書いてあるので、冒頭に平易な要約を置く。
+# 数字はすべて本文と同じ計算結果を使い、言い換えだけを行う。
+# 新しい判断はここでは足さない。
+
+def build_summary(a: MonthAnalysis, m: Dict[str, Any], pm: Optional[Dict[str, Any]],
+                  spot, decomp: Optional[sa.DeltaDecomposition]) -> Dict[str, Any]:
+    p = pm or {}
+    points: List[Dict[str, str]] = []
+
+    # 状態の見出し
+    short_gamma = m.get("gex_regime") == "ショートガンマ"
+    headline = "値動きが増幅されやすい状態" if short_gamma else "値動きが吸収されやすい状態"
+    sub = ("オプションの売り手が値動きを打ち消せず、動き出すと勢いがつきやすい"
+           if short_gamma else
+           "オプションの売り手が値動きを打ち消す側に回り、押し目が吸収されやすい")
+
+    # 相場
+    if spot and spot.close:
+        s = f"日経平均は {_fmt(spot.close, 0)}円"
+        if spot.change is not None:
+            direction = "上げ" if spot.change > 0 else ("下げ" if spot.change < 0 else "横ばい")
+            s += f"（前日比 {_fmt(spot.change, 0, plus=True)}円・{_fmt(spot.change_pct, 1, plus=True)}%）の{direction}"
+        points.append({"label": "相場", "text": s + "。"})
+
+    # 地合い
+    flip = m.get("gex_flip")
+    if flip:
+        gap = a.forward - flip
+        where = "下" if gap < 0 else "上"
+        points.append({"label": "いまの位置", "text":
+            f"切替ライン {_fmt(flip)}円 の {abs(gap):,.0f}円{where}にいる。"
+            + ("この下では値動きが増幅されやすい。" if gap < 0 else "この上では値動きが収まりやすい。")})
+
+    # 分かれ目
+    lower = a.walls["lower"][0].strike if (a.walls and a.walls["lower"]) else None
+    if flip and lower:
+        points.append({"label": "分かれ目", "text":
+            f"{_fmt(flip)}円 を回復すれば落ち着きやすい。逆に {_fmt(lower)}円 を割ると下げが加速しやすい。"})
+
+    # 警戒度
+    if m.get("rr25") is not None and p.get("rr25") is not None:
+        d = m["rr25"] - p["rr25"]
+        if d > 0.3:
+            text = f"下落への警戒が強まった（{p['rr25']:+.2f} → {m['rr25']:+.2f}）。"
+        elif d < -0.3:
+            text = f"下落への警戒は和らいだ（{p['rr25']:+.2f} → {m['rr25']:+.2f}）。"
+        else:
+            text = f"下落への警戒はほぼ横ばい（{m['rr25']:+.2f}）。"
+        points.append({"label": "警戒度", "text": text})
+
+    # 保険の動き
+    if decomp:
+        pos, spot_t = decomp.position, decomp.spot_and_time
+        if abs(pos) > TH_POSITION_DELTA:
+            text = ("新しく下落保険が買われた（本物の積み増し）。"
+                    if pos > 0 else "下落保険が外された。")
+        elif abs(spot_t) > abs(pos):
+            text = ("新しい売買はほとんど無く、相場が動いたことで"
+                    + ("もともとの保険が効き始めただけ。" if spot_t > 0 else "保険の効き目が薄れただけ。"))
+        else:
+            text = "保険の量にめだった動きは無い。"
+        points.append({"label": "保険の動き", "text": text})
+
+    # はしご図に渡す水準
+    upper = a.walls["upper"][0].strike if (a.walls and a.walls["upper"]) else None
+    levels = []
+    if upper:
+        levels.append({"key": "wall_up", "value": upper,
+                       "label": "上の壁", "note": "跳ね返されやすい水準"})
+    if flip:
+        levels.append({"key": "flip", "value": flip,
+                       "label": "切替ライン", "note": "ここより下は増幅、上は収まる"})
+    levels.append({"key": "now", "value": a.forward, "label": "いまここ", "note": "現在の水準"})
+    if lower:
+        levels.append({"key": "wall_down", "value": lower,
+                       "label": "下の壁", "note": "支えられやすい水準"})
+    levels.sort(key=lambda x: x["value"], reverse=True)
+    for lv in levels:
+        lv["display"] = _fmt(lv["value"])
+
+    band = a.bands.band50 if a.bands else (None, None)
+    return {
+        "headline": headline,
+        "sub": sub,
+        "level": "warn" if short_gamma else "ok",
+        "countdown": f"SQまであと {a.business_days}営業日（{a.sq.isoformat()}）",
+        "points": points,
+        "levels": levels,
+        "flip": flip,
+        "band50": [_fmt(band[0]), _fmt(band[1])],
+        "disclaimer": (
+            f"SQ値の予測ではない。9月11日のSQが {_fmt(band[0])}〜{_fmt(band[1])}円 に収まる確率を"
+            "市場が50%と値付けしている、という意味。この幅は毎日変わる。"),
     }
