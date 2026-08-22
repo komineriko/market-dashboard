@@ -108,6 +108,30 @@
   .ladder .lv.now .bar b{color:var(--accent);}
   .ladder .lv.now .bar:after{content:"";position:absolute;left:0;top:-4px;
     width:8px;height:8px;border-radius:50%;background:var(--accent);}
+  /* 印刷・PDF: 1ページ目をまとめ、2ページ目以降を詳細にする。
+     画面は暗い配色なので、紙では明るい配色に入れ替える。 */
+  @media print{
+    :root{
+      --bg:#fff; --bg-elevated:#f4f6f9; --card:#fff; --card-border:#c9d0da;
+      --text:#111418; --text-dim:#3d4552; --text-faint:#6b7482;
+      --up:#0a7a45; --down:#c0203a; --accent:#1449a8; --warn:#8a6100;
+      --up-bg:rgba(10,122,69,0.10); --down-bg:rgba(192,32,58,0.10);
+      --warn-bg:rgba(138,97,0,0.10); --accent-soft:rgba(20,73,168,0.10);
+    }
+    @page{margin:14mm 12mm;}
+    body{background:#fff;}
+    .app{max-width:none;padding:0;}
+    .page1{break-after:page;}
+    .more{display:none;}
+    h2{break-after:avoid;}
+    h3{break-after:avoid;}
+    .card,.sum,.tw,table{break-inside:avoid;}
+    table{font-size:9pt;}
+    th{position:static;}
+    .ladder .lv .bar b{background:#fff;}
+    footer{break-inside:avoid;}
+  }
+
   @media (max-width:640px){
     .sum ul li{grid-template-columns:1fr;gap:0;}
     .sum ul li b{padding-top:8px;}
@@ -115,6 +139,9 @@
     .ladder .lv{grid-template-columns:70px 1fr;}
     .ladder-legend{margin-left:0;}
   }
+
+  .more{margin:18px 0 26px;padding-top:14px;border-top:1px solid var(--card-border);
+    font-size:12px;color:var(--text-faint);text-align:center;letter-spacing:.04em;}
 
   ol.limits{font-size:12.5px;color:var(--text-dim);line-height:1.9;padding-left:22px;margin:6px 0;}
   ol.limits li{margin-bottom:5px;}
@@ -2124,10 +2151,11 @@ function render(d){
     (m.has_prev ? '' : '　※前日スナップショットが無いため、前日比・答え合わせは次回から')));
   app.appendChild(head);
 
-  /* ---- ひとことまとめ ---- */
+  /* ---- ひとことまとめ（1ページ目） ---- */
   if (d.summary){
     const su = d.summary;
-    app.appendChild(section('ひとことまとめ'));
+    const page1 = $('section','page1');
+    page1.appendChild(section('ひとことまとめ'));
     const box = $('div','sum');
     const head = $('div','head');
     head.appendChild($('div','state ' + (su.level === 'warn' ? 'warn' : 'ok'),
@@ -2145,7 +2173,9 @@ function render(d){
     });
     box.appendChild(ul);
     box.appendChild($('div','note', '※ ' + su.disclaimer));
-    app.appendChild(box);
+    page1.appendChild(box);
+    page1.appendChild($('div','more', '▼ 次ページ以降に詳細レポート'));
+    app.appendChild(page1);
   }
 
   /* ---- 結論 ---- */

@@ -434,6 +434,22 @@ class TestLadderTemplate(unittest.TestCase):
         for cls in (".ladder .lv.flip .bar", ".ladder .lv.now .bar"):
             self.assertIn(cls, self.html, f"{cls} の指定が無い")
 
+    def test_summary_is_its_own_first_page(self):
+        """印刷・PDF化したとき、1ページ目がまとめ、2ページ目から詳細になること。"""
+        self.assertIn("@media print", self.html)
+        self.assertIn(".page1{break-after:page;}", self.html.replace(" ", "").replace("\n", ""))
+        # まとめは page1 の中に入れている
+        self.assertIn("$('section','page1')", self.html)
+
+    def test_print_uses_a_light_palette(self):
+        """画面は暗い配色なので、紙では明るい配色に入れ替わること。"""
+        import re
+        m = re.search(r"@media print\{(.*?)\n  \}", self.html, re.S)
+        self.assertIsNotNone(m, "印刷用の指定が見つからない")
+        block = m.group(1)
+        self.assertIn("--bg:#fff", block.replace(" ", ""))
+        self.assertIn("--text:#111418", block.replace(" ", ""))
+
     def test_legend_carries_text_not_colour_alone(self):
         """緑と赤は色覚多様性で見分けにくいので、凡例に文字が必ず付くこと。"""
         self.assertIn("切替ラインより上", self.html)
