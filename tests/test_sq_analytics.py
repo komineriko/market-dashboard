@@ -326,12 +326,28 @@ class TestSummary(unittest.TestCase):
             self.assertIn("吸収", su["headline"])
             self.assertEqual(su["level"], "ok")
 
-    def test_no_jargon_in_headline(self):
-        """見出しに専門用語を出さない。"""
+    def test_headline_stays_plain_but_sub_names_the_term(self):
+        """
+        見出しと図は平易な語のまま、説明と箇条書きは本文と同じ用語を使う。
+        図で位置関係をつかみ、文章で正確な指標名を追える形にしている。
+        """
         su = self._summary()
         for word in ("ガンマ", "GEX", "デルタ", "IV", "スキュー"):
             self.assertNotIn(word, su["headline"])
-            self.assertNotIn(word, su["sub"])
+        self.assertIn("ガンマ", su["sub"])
+        # はしご図のラベルは平易なまま
+        labels = {l["label"] for l in su["levels"]}
+        self.assertIn("切替ライン", labels)
+        self.assertIn("いまここ", labels)
+
+    def test_points_use_report_terminology(self):
+        su = self._summary(pm={**self.m, "rr25": self.m["rr25"] + 2.0})
+        labels = [p["label"] for p in su["points"]]
+        self.assertIn("レジーム", labels)
+        self.assertIn("RR25", labels)
+        regime = next(p for p in su["points"] if p["label"] == "レジーム")["text"]
+        self.assertIn("GEXフリップ", regime)
+        self.assertIn("Net GEX at ATM", regime)
 
     def test_levels_are_sorted_and_labelled(self):
         su = self._summary()
@@ -355,23 +371,24 @@ class TestSummary(unittest.TestCase):
         su = self._summary(spot=spot)
         market = next(p for p in su["points"] if p["label"] == "相場")
         self.assertIn("66,217", market["text"])
-        self.assertIn("上げ", market["text"])
+        self.assertIn("+890", market["text"])
+        self.assertIn("+1.4%", market["text"])
 
-    def test_alert_direction(self):
-        # 前日を今日より高くすると「和らいだ」、低くすると「強まった」になること
+    def test_rr25_direction_and_driver(self):
         eased = self._summary(pm={**self.m, "rr25": self.m["rr25"] + 2.0})
-        text = next(p for p in eased["points"] if p["label"] == "警戒度")["text"]
-        self.assertIn("和らいだ", text)
+        text = next(p for p in eased["points"] if p["label"] == "RR25")["text"]
+        self.assertIn("縮小", text)
+        self.assertIn("駆動は", text)
 
         worse = self._summary(pm={**self.m, "rr25": self.m["rr25"] - 2.0})
-        text = next(p for p in worse["points"] if p["label"] == "警戒度")["text"]
-        self.assertIn("強まった", text)
+        text = next(p for p in worse["points"] if p["label"] == "RR25")["text"]
+        self.assertIn("拡大", text)
 
         flat = self._summary(pm={**self.m, "rr25": self.m["rr25"] + 0.1})
-        text = next(p for p in flat["points"] if p["label"] == "警戒度")["text"]
+        text = next(p for p in flat["points"] if p["label"] == "RR25")["text"]
         self.assertIn("横ばい", text)
 
-    def test_insurance_line_distinguishes_position_from_spot_move(self):
+    def test_effective_delta_shows_the_three_way_split(self):
         import sq_analytics as sa
         prev = build_chain()
         book = sa.put_book(self.chain, self.a.curve, self.a.forward)
@@ -379,8 +396,10 @@ class TestSummary(unittest.TestCase):
         dec = sa.decompose_effective_delta(self.chain, prev, book,
                                            book.effective_delta - 3000)
         su = self._summary(decomp=dec)
-        ins = next(p for p in su["points"] if p["label"] == "保険の動き")
-        self.assertIn("新しい売買はほとんど無く", ins["text"])
+        text = next(p for p in su["points"] if p["label"] == "実効デルタ")["text"]
+        self.assertIn("ポジション要因", text)
+        self.assertIn("現値移動", text)
+        self.assertIn("効き始めた", text)
 
     def test_stays_within_about_twenty_lines(self):
         """ぱっと見で読める分量に収まっていること。"""

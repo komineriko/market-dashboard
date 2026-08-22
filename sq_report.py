@@ -1113,9 +1113,13 @@ def participant_snapshot(psrc, months: Sequence[str]) -> Optional[Dict[str, Any]
 # ひとことまとめ（専門用語を使わない要約）
 # ---------------------------------------------------------------------------
 #
-# レポート本文は専門用語で書いてあるので、冒頭に平易な要約を置く。
-# 数字はすべて本文と同じ計算結果を使い、言い換えだけを行う。
+# 冒頭に結論だけの要約を置く。数字はすべて本文と同じ計算結果を使い、
 # 新しい判断はここでは足さない。
+#
+# 図（はしご）は「切替ライン」「上の壁」など平易な語で示し、位置関係が
+# ひと目で分かるようにする。一方、下の箇条書きは本文と同じ専門用語
+# （ショートガンマ・GEXフリップ・RR25・実効デルタ）で書く。
+# 図で直感をつかみ、文章で正確な指標名を追える、という役割分担にしている。
 
 def build_summary(a: MonthAnalysis, m: Dict[str, Any], pm: Optional[Dict[str, Any]],
                   spot, decomp: Optional[sa.DeltaDecomposition]) -> Dict[str, Any]:
@@ -1125,56 +1129,78 @@ def build_summary(a: MonthAnalysis, m: Dict[str, Any], pm: Optional[Dict[str, An
     # 状態の見出し
     short_gamma = m.get("gex_regime") == "ショートガンマ"
     headline = "値動きが増幅されやすい状態" if short_gamma else "値動きが吸収されやすい状態"
-    sub = ("オプションの売り手が値動きを打ち消せず、動き出すと勢いがつきやすい"
+    sub = ("ショートガンマ。ディーラーが値動きを打ち消せず、動き出すと勢いがつきやすい"
            if short_gamma else
-           "オプションの売り手が値動きを打ち消す側に回り、押し目が吸収されやすい")
+           "ロングガンマ。ディーラーが値動きを吸収する側に回り、押し目が吸収されやすい")
 
     # 相場
     if spot and spot.close:
-        s = f"日経平均は {_fmt(spot.close, 0)}円"
+        s = f"日経平均 {_fmt(spot.close, 0)}円"
         if spot.change is not None:
-            direction = "上げ" if spot.change > 0 else ("下げ" if spot.change < 0 else "横ばい")
-            s += f"（前日比 {_fmt(spot.change, 0, plus=True)}円・{_fmt(spot.change_pct, 1, plus=True)}%）の{direction}"
-        points.append({"label": "相場", "text": s + "。"})
+            s += (f"（前日比 {_fmt(spot.change, 0, plus=True)}円・"
+                  f"{_fmt(spot.change_pct, 1, plus=True)}%）")
+        points.append({"label": "相場", "text": s})
 
-    # 地合い
+    # レジーム
     flip = m.get("gex_flip")
     if flip:
         gap = a.forward - flip
-        where = "下" if gap < 0 else "上"
-        points.append({"label": "いまの位置", "text":
-            f"切替ライン {_fmt(flip)}円 の {abs(gap):,.0f}円{where}にいる。"
-            + ("この下では値動きが増幅されやすい。" if gap < 0 else "この上では値動きが収まりやすい。")})
+        regime = m.get("gex_regime") or "—"
+        zone = "加速域の内側" if gap < 0 else "押し目吸収の内側"
+        points.append({"label": "レジーム", "text":
+            f"{regime}。Net GEX at ATM {_fmt(m.get('gex_at_atm'), 1, plus=True)}億、"
+            f"GEXフリップ {_fmt(flip)}。現値 F={_fmt(a.forward)} はその "
+            f"{abs(gap):,.0f}円{'下' if gap < 0 else '上'}＝{zone}"})
 
     # 分かれ目
-    lower = a.walls["lower"][0].strike if (a.walls and a.walls["lower"]) else None
+    lower = a.walls["lower"][0] if (a.walls and a.walls["lower"]) else None
     if flip and lower:
         points.append({"label": "分かれ目", "text":
-            f"{_fmt(flip)}円 を回復すれば落ち着きやすい。逆に {_fmt(lower)}円 を割ると下げが加速しやすい。"})
+            f"上は {_fmt(flip)}（フリップ回復で"
+            f"{'ロングガンマに戻る' if short_gamma else '維持'}）／"
+            f"下は {_fmt(lower.strike)}（PUT壁・名目{lower.nominal_oku:.1f}億・"
+            f"スコア{lower.score:.1f}）割れで加速"})
 
-    # 警戒度
-    if m.get("rr25") is not None and p.get("rr25") is not None:
-        d = m["rr25"] - p["rr25"]
-        if d > 0.3:
-            text = f"下落への警戒が強まった（{p['rr25']:+.2f} → {m['rr25']:+.2f}）。"
-        elif d < -0.3:
-            text = f"下落への警戒は和らいだ（{p['rr25']:+.2f} → {m['rr25']:+.2f}）。"
+    # RR25
+    if m.get("rr25") is not None:
+        if p.get("rr25") is not None:
+            d_rr = m["rr25"] - p["rr25"]
+            d_p = (m.get("put25_iv") or 0) - (p.get("put25_iv") or 0)
+            d_c = (m.get("call25_iv") or 0) - (p.get("call25_iv") or 0)
+            drive = (f"駆動はPUT側 {d_p:+.2f}" if abs(d_p) >= abs(d_c)
+                     else f"駆動はCALL側 {d_c:+.2f}")
+            if d_rr > 0.3:
+                read = "拡大＝下方警戒の再構築"
+            elif d_rr < -0.3:
+                read = "縮小＝恐怖の後退"
+            else:
+                read = "横ばい"
+            text = (f"{p['rr25']:+.2f} → {m['rr25']:+.2f}（{drive}）。{read}。"
+                    f"BF25 {_fmt(m.get('bf25'), 2, plus=True)}")
         else:
-            text = f"下落への警戒はほぼ横ばい（{m['rr25']:+.2f}）。"
-        points.append({"label": "警戒度", "text": text})
+            text = (f"{m['rr25']:+.2f}（25dPut {_fmt(m.get('put25_iv'), 2)}／"
+                    f"25dCall {_fmt(m.get('call25_iv'), 2)}）")
+        points.append({"label": "RR25", "text": text})
 
-    # 保険の動き
-    if decomp:
+    # 実効デルタ
+    if decomp and a.book:
         pos, spot_t = decomp.position, decomp.spot_and_time
         if abs(pos) > TH_POSITION_DELTA:
-            text = ("新しく下落保険が買われた（本物の積み増し）。"
-                    if pos > 0 else "下落保険が外された。")
+            read = "本物の積み増し" if pos > 0 else "保険の解消"
         elif abs(spot_t) > abs(pos):
-            text = ("新しい売買はほとんど無く、相場が動いたことで"
-                    + ("もともとの保険が効き始めただけ。" if spot_t > 0 else "保険の効き目が薄れただけ。"))
+            read = ("「積み直した」のではなく「効き始めた」" if spot_t > 0
+                    else "現値が戻って効き目が薄れただけ")
         else:
-            text = "保険の量にめだった動きは無い。"
-        points.append({"label": "保険の動き", "text": text})
+            read = "めだった変化なし"
+        points.append({"label": "実効デルタ", "text":
+            f"{_fmt(p.get('put_effective_delta'))} → {_fmt(a.book.effective_delta)}"
+            f"（{_fmt(decomp.total_change, plus=True)}）。"
+            f"ポジション要因 {_fmt(pos, plus=True)}枚／"
+            f"現値移動・時間経過 {_fmt(spot_t, plus=True)}枚。{read}"})
+    elif a.book:
+        points.append({"label": "実効デルタ", "text":
+            f"{_fmt(a.book.effective_delta)}枚（理論プレミアム "
+            f"{_fmt(a.book.premium_oku, 1)}億円）。3分解は次回から"})
 
     # はしご図に渡す水準
     upper = a.walls["upper"][0].strike if (a.walls and a.walls["upper"]) else None
@@ -1187,7 +1213,7 @@ def build_summary(a: MonthAnalysis, m: Dict[str, Any], pm: Optional[Dict[str, An
                        "label": "切替ライン", "note": "ここより下は増幅、上は収まる"})
     levels.append({"key": "now", "value": a.forward, "label": "いまここ", "note": "現在の水準"})
     if lower:
-        levels.append({"key": "wall_down", "value": lower,
+        levels.append({"key": "wall_down", "value": lower.strike,
                        "label": "下の壁", "note": "支えられやすい水準"})
     levels.sort(key=lambda x: x["value"], reverse=True)
     for lv in levels:
