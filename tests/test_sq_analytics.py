@@ -389,6 +389,38 @@ class TestSummary(unittest.TestCase):
         self.assertLessEqual(lines, 20, f"まとめが長すぎる: {lines}行相当")
 
 
+class TestLadderTemplate(unittest.TestCase):
+    """はしご図のテンプレート。線が見えなくなる指定を入れないための歯止め。"""
+
+    def setUp(self):
+        import os
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(here, "sq_report.html"), encoding="utf-8") as f:
+            self.html = f.read()
+
+    def test_wall_lines_use_a_visible_colour(self):
+        """
+        壁の線に --card-border を使うと帯の色に沈んで見えなくなる（実際に踏んだ）。
+        4本の水準すべてが見える色で描かれること。
+        """
+        import re
+        m = re.search(r"\.ladder \.lv \.bar\{[^}]*\}", self.html)
+        self.assertIsNotNone(m, "はしご図の線の指定が見つからない")
+        rule = m.group(0)
+        self.assertIn("border-top", rule)
+        self.assertNotIn("var(--card-border)", rule,
+                         "壁の線が背景に沈む色になっている")
+
+    def test_all_four_level_kinds_are_styled(self):
+        for cls in (".ladder .lv.flip .bar", ".ladder .lv.now .bar"):
+            self.assertIn(cls, self.html, f"{cls} の指定が無い")
+
+    def test_legend_carries_text_not_colour_alone(self):
+        """緑と赤は色覚多様性で見分けにくいので、凡例に文字が必ず付くこと。"""
+        self.assertIn("切替ラインより上", self.html)
+        self.assertIn("切替ラインより下", self.html)
+
+
 class TestAnswerCheck(unittest.TestCase):
     """監視ポイントの自動評価。"""
 
