@@ -677,6 +677,52 @@ class TestParticipantSection(unittest.TestCase):
         self.assertIsNone(self.sr.participant_snapshot(None, ["26-09"]))
 
 
+class TestInjectHtml(unittest.TestCase):
+    """同じ内容なら書き込まない。生成時刻だけの差分でコミットを積まないため。"""
+
+    def setUp(self):
+        import tempfile, os, json
+        import update_sq_report as up
+        self.up, self.json, self.os = up, json, os
+        self.tmp = tempfile.NamedTemporaryFile("w", suffix=".html",
+                                               delete=False, encoding="utf-8")
+        self.tmp.write("<html><script>\n" + up.START
+                       + "\nconst SQ_DATA = null;\n" + up.END + "\n</script></html>")
+        self.tmp.close()
+
+    def tearDown(self):
+        self.os.unlink(self.tmp.name)
+
+    def _read(self):
+        with open(self.tmp.name, encoding="utf-8") as f:
+            return f.read()
+
+    def test_first_write_happens(self):
+        rep = {"meta": {"base_date": "2026-08-26", "generated_at": "A"}, "x": 1}
+        self.assertTrue(self.up.inject_html(rep, self.tmp.name))
+        self.assertIn("2026-08-26", self._read())
+
+    def test_same_content_is_skipped(self):
+        rep = {"meta": {"base_date": "2026-08-26", "generated_at": "A"}, "x": 1}
+        self.up.inject_html(rep, self.tmp.name)
+        before = self._read()
+        # 生成時刻だけ違う同じ内容
+        rep2 = {"meta": {"base_date": "2026-08-26", "generated_at": "B"}, "x": 1}
+        self.assertFalse(self.up.inject_html(rep2, self.tmp.name))
+        self.assertEqual(self._read(), before, "同内容なのに書き換わっている")
+
+    def test_new_base_date_is_written(self):
+        self.up.inject_html({"meta": {"base_date": "2026-08-26", "generated_at": "A"}}, self.tmp.name)
+        rep = {"meta": {"base_date": "2026-08-27", "generated_at": "B"}}
+        self.assertTrue(self.up.inject_html(rep, self.tmp.name))
+        self.assertIn("2026-08-27", self._read())
+
+    def test_changed_metric_is_written(self):
+        self.up.inject_html({"meta": {"base_date": "2026-08-26", "generated_at": "A"}, "x": 1}, self.tmp.name)
+        rep = {"meta": {"base_date": "2026-08-26", "generated_at": "A"}, "x": 2}
+        self.assertTrue(self.up.inject_html(rep, self.tmp.name))
+
+
 class TestHelpers(unittest.TestCase):
     def test_normalise_month(self):
         for text, want in [("2026/09", "26-09"), ("202609", "26-09"),

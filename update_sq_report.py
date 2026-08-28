@@ -131,16 +131,51 @@ def load_events() -> list:
 # HTMLへの差し込み
 # ---------------------------------------------------------------------------
 
-def inject_html(report: dict, path: str = HTML_PATH) -> None:
+def _existing_report(html: str) -> dict | None:
+    """HTMLに差し込み済みのデータを取り出す。無ければ None。"""
+    i, j = html.find(START), html.find(END)
+    if i < 0 or j < 0:
+        return None
+    block = html[i + len(START):j]
+    m = re.search(r"const SQ_DATA\s*=\s*(.*);\s*$", block.strip(), re.S)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return None
+
+
+def _without_timestamp(report: dict | None) -> dict | None:
+    """生成時刻だけの差分を無視するため、比較用に取り除く。"""
+    if not report:
+        return None
+    copy = json.loads(json.dumps(report))
+    copy.get("meta", {}).pop("generated_at", None)
+    return copy
+
+
+def inject_html(report: dict, path: str = HTML_PATH) -> bool:
+    """
+    レポートを差し込む。中身が前回と同じなら書き込まない。
+
+    生成時刻は毎回変わるので、それだけを理由にコミットが積み上がるのを避ける。
+    1日に複数回まわしても、板が更新されていない限りコミットは増えない。
+    """
     with open(path, "r", encoding="utf-8") as f:
         html = f.read()
     i, j = html.find(START), html.find(END)
     if i < 0 or j < 0:
         raise SystemExit("ERROR: データ差し込み用の目印コメントが見つかりません。")
+
+    if _without_timestamp(_existing_report(html)) == _without_timestamp(report):
+        return False
+
     payload = json.dumps(report, ensure_ascii=False, indent=1)
     block = f"{START}\nconst SQ_DATA = {payload};\n"
     with open(path, "w", encoding="utf-8") as f:
         f.write(html[:i] + block + html[j:])
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -292,10 +327,12 @@ def main(argv=None) -> int:
         print("--dry-run のためファイルは書き込みませんでした。")
         return 0
 
-    inject_html(report)
-    save_snapshot(snapshot, base)
-    save_history(history, base, report["metrics"])
-    print(f"更新しました: {os.path.relpath(HTML_PATH, HERE)}")
+    if inject_html(report):
+        save_snapshot(snapshot, base)
+        save_history(history, base, report["metrics"])
+        print(f"更新しました: {os.path.relpath(HTML_PATH, HERE)}")
+    else:
+        print("前回と同じ内容のため、書き込みませんでした。")
     return 0
 
 
