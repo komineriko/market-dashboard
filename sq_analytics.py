@@ -145,6 +145,14 @@ def sq_date_for(year: int, month: int) -> date:
     return d
 
 
+def next_business_day(d: date) -> date:
+    """d の翌営業日（土日・祝日を飛ばす）。"""
+    n = d + timedelta(days=1)
+    while n.weekday() >= 5 or n in JP_HOLIDAYS:
+        n += timedelta(days=1)
+    return n
+
+
 def business_days_between(start: date, end: date) -> int:
     """start の翌日から end までの営業日数（SQ日を含む）。"""
     n = 0

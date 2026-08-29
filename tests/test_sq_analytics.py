@@ -408,6 +408,34 @@ class TestSummary(unittest.TestCase):
         self.assertLessEqual(lines, 20, f"まとめが長すぎる: {lines}行相当")
 
 
+class TestFreshness(unittest.TestCase):
+    """次の更新予定。「本日分が無い」と「更新が止まっている」を読者が区別できること。"""
+
+    def test_next_business_day_skips_weekend_and_holiday(self):
+        from datetime import date
+        self.assertEqual(sa.next_business_day(date(2026, 8, 28)), date(2026, 8, 31))
+        self.assertEqual(sa.next_business_day(date(2026, 8, 27)), date(2026, 8, 28))
+        # 9/21〜23 は祝日
+        self.assertEqual(sa.next_business_day(date(2026, 9, 18)), date(2026, 9, 24))
+
+    def test_next_update_is_two_business_days_out(self):
+        """日報は翌営業日に出るので、次の板を読めるのは2営業日先になる。"""
+        from datetime import date
+        import sq_report as sr
+        f = sr._freshness(date(2026, 8, 27))
+        self.assertEqual(f["next_board_date"], "2026-08-28")
+        self.assertTrue(f["next_update_at"].startswith("2026-08-31T20:00"))
+        self.assertIn("8/31(月)", f["next_update_label"])
+
+    def test_meta_carries_the_schedule(self):
+        """基準日が同じなら値も同じ。毎回の実行で差分が出ないこと。"""
+        from datetime import date
+        import sq_report as sr
+        a = sr._freshness(date(2026, 8, 27))
+        b = sr._freshness(date(2026, 8, 27))
+        self.assertEqual(a, b)
+
+
 class TestLadderTemplate(unittest.TestCase):
     """はしご図のテンプレート。線が見えなくなる指定を入れないための歯止め。"""
 
@@ -433,6 +461,13 @@ class TestLadderTemplate(unittest.TestCase):
     def test_all_four_level_kinds_are_styled(self):
         for cls in (".ladder .lv.flip .bar", ".ladder .lv.now .bar"):
             self.assertIn(cls, self.html, f"{cls} の指定が無い")
+
+    def test_freshness_banner_is_rendered(self):
+        """更新予定の表示がヘッダに出ること。無いと「止まっている」と誤解される。"""
+        self.assertIn("function freshness(", self.html)
+        self.assertIn("next_update_at", self.html)
+        self.assertIn("header.top .fresh{", self.html)
+        self.assertIn("const fresh = freshness(m);", self.html)
 
     def test_summary_is_its_own_first_page(self):
         """印刷・PDF化したとき、1ページ目がまとめ、2ページ目から詳細になること。"""

@@ -24,6 +24,12 @@
   header.top h1{font-size:19px;font-weight:700;margin:0 0 8px;letter-spacing:.02em;}
   header.top .line{font-size:12.5px;color:var(--text-dim);line-height:1.7;}
   header.top .gen{font-size:11.5px;color:var(--text-faint);margin-top:6px;}
+  header.top .fresh{margin-top:10px;font-size:12px;line-height:1.7;padding:8px 11px;
+    border-left:3px solid var(--accent);background:var(--accent-soft);
+    color:var(--text-dim);border-radius:0 4px 4px 0;}
+  header.top .fresh.late{border-left-color:var(--warn);background:var(--warn-bg);}
+  header.top .fresh b{color:var(--text);font-weight:600;}
+  header.top .fresh .why{display:block;margin-top:3px;font-size:11.5px;color:var(--text-dim);}
   .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;
     background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:1px;}
   .badge.warn{background:var(--warn-bg);color:var(--warn);}
@@ -185,7 +191,11 @@ const SQ_DATA = {
    "日経平均: yfinance ^N225（2026-08-27）",
    "参加者別建玉: 20260821_indexfut_oi_by_tp.xlsx（2026-08-21 時点）"
   ],
-  "has_prev": true
+  "has_prev": true,
+  "next_board_date": "2026-08-28",
+  "next_board_label": "8/28(金)",
+  "next_update_at": "2026-08-31T20:00:00+09:00",
+  "next_update_label": "8/31(月) 20:00 JST 頃"
  },
  "summary": {
   "headline": "値動きが増幅されやすい状態",
@@ -2128,6 +2138,28 @@ function gexChart(profile, flipLabel){
   return box;
 }
 
+/* 「まだ新しいデータが無い」のか「更新が止まっている」のかを読者が区別できるようにする。
+   大阪取引所の日報は翌営業日にしか公開されないので、レポートは常に1営業日遅れになる。
+   next_update_at はビルド時に基準日から算出済み（基準日が変わらない限り値も変わらないので、
+   この表示のために毎回の実行で差分が出ることはない）。*/
+const LATE_GRACE_MS = 12 * 3600 * 1000;   /* 定期実行は数時間ずれることがある */
+
+function freshness(m){
+  if (!m.next_update_at) return null;
+  const due = Date.parse(m.next_update_at);
+  if (isNaN(due)) return null;
+  const late = Date.now() > due + LATE_GRACE_MS;
+  const el = $('div', 'fresh' + (late ? ' late' : ''));
+  el.appendChild($('b', null, late ? '⚠ 更新が遅れています' : '✓ これが最新のデータです'));
+  el.appendChild(document.createTextNode(late
+    ? `　${m.next_update_label} に ${m.next_board_label} の板へ更新される予定でした。`
+    : `　次の更新は ${m.next_update_label}（${m.next_board_label} の板を反映）。`));
+  el.appendChild($('span', 'why',
+    '大阪取引所の日報は当日には公開されず翌営業日に出るため、本レポートは常に1営業日遅れです。'
+    + '土日・祝日は板が立たないので更新もありません。'));
+  return el;
+}
+
 function render(d){
   const app = document.getElementById('app');
   app.innerHTML = '';
@@ -2149,6 +2181,8 @@ function render(d){
   head.appendChild($('div','gen',
     `生成 ${m.generated_at}　データ: ${m.origin || '—'}` +
     (m.has_prev ? '' : '　※前日スナップショットが無いため、前日比・答え合わせは次回から')));
+  const fresh = freshness(m);
+  if (fresh) head.appendChild(fresh);
   app.appendChild(head);
 
   /* ---- ひとことまとめ（1ページ目） ---- */

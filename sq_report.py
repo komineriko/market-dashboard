@@ -920,6 +920,25 @@ def wall_oi_metrics(chain: sa.Chain, forward: float,
 # 組み立て
 # ---------------------------------------------------------------------------
 
+def _freshness(base: date) -> Dict[str, Any]:
+    """次にレポートが更新される予定を出す。
+
+    大阪取引所日報は当日には出ず、翌営業日に公開される（実測）。
+    つまり base の次の営業日 N の板は、さらにその翌営業日にしか読めない。
+    自動更新は 20:00 JST に回しているので、それが次の更新予定になる。
+    """
+    nxt = sa.next_business_day(base)
+    publish = sa.next_business_day(nxt)
+    at = datetime(publish.year, publish.month, publish.day, 20, 0, tzinfo=JST)
+    wd = "月火水木金土日"
+    return {
+        "next_board_date": nxt.isoformat(),
+        "next_board_label": f"{nxt.month}/{nxt.day}({wd[nxt.weekday()]})",
+        "next_update_at": at.isoformat(),
+        "next_update_label": f"{publish.month}/{publish.day}({wd[publish.weekday()]}) 20:00 JST 頃",
+    }
+
+
 def build_report(chains: Dict[str, sa.Chain], spot, vi: Optional[float],
                  vi_source: Optional[str], base: date,
                  prev_snapshot: Optional[Dict[str, Any]] = None,
@@ -982,6 +1001,7 @@ def build_report(chains: Dict[str, sa.Chain], spot, vi: Optional[float],
             "origin": origin,
             "sources": list(extra_sources or []),
             "has_prev": prev_chain is not None,
+            **_freshness(base),
         },
         "summary": build_summary(a, metrics, prev_metrics, spot, decomp),
         "conclusion": build_conclusion(a, far, metrics, prev_metrics, window, decomp, spot, vi),
