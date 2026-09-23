@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SPY / XSP 14DTE 3脚Put戦略 計算エンジン
+レバポ（SPY / XSP 14DTE 3脚Put戦略）計算エンジン
 
 外部通信を一切行わない純粋な計算層。実際のオプションチェーン（MF-Boost
 Option Info などから書き出したCSV）を受け取り、次を行う。
@@ -574,7 +574,7 @@ def report(chain: Chain, spot: float, max_loss: float = DEFAULT_MAX_LOSS,
     k1 = strike_for_call_delta(chain, 0.90)
     k2 = strike_for_call_delta(chain, 0.15)
     L: List[str] = []
-    L.append(f"# 3脚Put 14DTE — {chain.expiration}（{chain.dte} DTE）")
+    L.append(f"# レバポ 14DTE — {chain.expiration}（{chain.dte} DTE）")
     L.append("")
     if source:
         L.append(f"データ: {source}")
@@ -670,7 +670,7 @@ def report(chain: Chain, spot: float, max_loss: float = DEFAULT_MAX_LOSS,
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="SPY/XSP 14DTE 3脚Put: ①②の確定と③の総当たり")
+    ap = argparse.ArgumentParser(description="レバポ（SPY/XSP 14DTE 3脚Put）: ①②の確定と③の総当たり")
     ap.add_argument("csv", help="オプションチェーンCSV（MF-Boost 等から書き出したもの）")
     ap.add_argument("--spot", type=float, help="原資産価格（省略時はCSVの spot 列かパリティから推定）")
     ap.add_argument("--dte", type=int, default=14)
