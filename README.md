@@ -142,3 +142,28 @@ JPXの公表データは置き場所が分かりにくいので、調べた結�
 - Net GEX は「ディーラー = +CALL建玉 − PUT建玉」の慣例仮定に依存する。
 
 本レポートは建玉スナップショットに基づく構造分析であり、投資勧誘・売買推奨ではありません。
+
+---
+
+## SPY / XSP 14DTE 3脚Put 計算エンジン（`spy3leg.py`）
+
+実オプションチェーンのCSVから、次の3脚を組み立てて評価する（外部通信なし）。
+
+| 脚 | 決め方 | 売買 |
+| --- | --- | --- |
+| ① | Call Δ ≈ +0.90 の行使価格の Put（Put Δ ≈ −0.10, OTM） | Long 1 |
+| ② | Call Δ ≈ +0.15 の行使価格の Put（Put Δ ≈ −0.85, ITM） | Short 1 |
+| ③ | K1 < K3 < K2 を総当たりし、満期最大損失 < $2,500 を満たす中で ATM 以下・Net Vega 最大 | Long 1 |
+
+```
+python3 spy3leg.py chain.csv --spot 660.5 --source "MF-Boost 2026-09-23 15:30 ET" -o report.md
+```
+
+- CSV は横持ち（`Strike, Call Delta, Put Delta, Call IV, Put IV, Put Bid, Put Ask, Put Vega …`）と
+  縦持ち（`type` 列が C/P）の両方を読む。IV は `18.5` / `18.5%` / `0.185` のどれでもよい。
+- 出力: ①②の確定、③全候補の Net Debit・最大損失（Mid と Natural）・損益分岐・Net Δ/Γ/Vega/Θ、
+  採用ストラクチャ、Exit 10/7/5/3/1/0 DTE × Spot ±10% × IV −10〜+20pt の再評価グリッド、
+  Theta / Delta+Gamma / Vega の P/L 分解、②の時間価値（SPY 早期割当ての目安）。
+- 満期最大損失は厳密に `(K2 − K3 + Net Debit) × 100`（S が K1〜K3 の平坦区間で発生）。
+- バックテスト用に `opex_flags` / `opex_regime`（Normal・Monthly/Quarterly OPEX Entry/Cross）、
+  `macro_flags`、`metrics`（上位5%除外の期待値を含む）を同じモジュールに置いている。
