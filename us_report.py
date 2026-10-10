@@ -417,6 +417,26 @@ LIMITS = [
 ]
 
 
+def _trim(cands: List[uo.Candidate], limit: int) -> List[uo.Candidate]:
+    """上位を切り出す。ただし同じ銘柄で埋め尽くさない。
+
+    1銘柄から満期違いで2本拾えるようにしているので、素直に順位で切ると
+    「4銘柄が2本ずつ」になって選択肢が狭く見える。まず銘柄ごとの最上位を
+    並べ、余った枠を2本目で埋める。
+    """
+    ordered = sorted(cands, key=lambda c: c.rank, reverse=True)
+    best: List[uo.Candidate] = []
+    extra: List[uo.Candidate] = []
+    seen = set()
+    for c in ordered:
+        if c.symbol in seen:
+            extra.append(c)
+        else:
+            seen.add(c.symbol)
+            best.append(c)
+    return (best + extra)[:limit]
+
+
 def build_report(underlyings: Sequence[uo.Underlying], asof: date,
                  fetch_report: Any = None,
                  holdings: Optional[List[str]] = None,
@@ -458,8 +478,7 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
         tech_rows.append(_tech_row(tech, u, iv, ratio, note))
 
     for key in buckets:
-        buckets[key].sort(key=lambda c: c.rank, reverse=True)
-        buckets[key] = buckets[key][:top_per_section]
+        buckets[key] = _trim(buckets[key], top_per_section)
 
     sections = []
     for key, _ in uo.SCREENS:

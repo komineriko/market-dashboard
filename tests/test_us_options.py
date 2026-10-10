@@ -632,3 +632,30 @@ class TestAbsurdIvGuard(unittest.TestCase):
         self.assertIn("WEIRD", blob, "外した銘柄が開示されていない")
         row = next(r for r in rep["tech"]["rows"] if r["symbol"] == "WEIRD")
         self.assertIn("IV", row["cells"][-1])
+
+
+class TestSectionTrim(unittest.TestCase):
+    """1区分が同じ銘柄だけで埋まらないこと。"""
+
+    def _c(self, sym, rank):
+        return uo.Candidate(strategy="long_call", symbol=sym, expiry="2026-10-16",
+                            dte=7, spot=100.0, legs=[], metrics={}, rank=rank)
+
+    def test_best_of_each_symbol_comes_first(self):
+        cands = [self._c("AAA", 9), self._c("AAA", 8), self._c("BBB", 7),
+                 self._c("BBB", 6), self._c("CCC", 5)]
+        got = [c.symbol for c in ur._trim(cands, 3)]
+        self.assertEqual(got, ["AAA", "BBB", "CCC"])
+
+    def test_spare_slots_are_filled_with_seconds(self):
+        cands = [self._c("AAA", 9), self._c("AAA", 8), self._c("BBB", 7)]
+        got = [c.symbol for c in ur._trim(cands, 3)]
+        self.assertEqual(got, ["AAA", "BBB", "AAA"])
+
+    def test_still_sorted_by_rank_within_the_first_pass(self):
+        cands = [self._c("AAA", 1), self._c("BBB", 9)]
+        self.assertEqual([c.symbol for c in ur._trim(cands, 2)], ["BBB", "AAA"])
+
+    def test_limit_is_respected(self):
+        cands = [self._c(f"S{i}", i) for i in range(20)]
+        self.assertEqual(len(ur._trim(cands, 8)), 8)
