@@ -469,7 +469,9 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
         picked = sum(len(v) for v in found.values())
         if ratio is not None and not uo.iv_is_sane(ratio):
             note = "IVが異常に高く除外"
-            absurd.append(u.symbol)
+            # 数字も一緒に出す。しきい値が妥当かを読む側が判断できるように。
+            absurd.append(f"{u.symbol}（IV {iv:.0f}% ÷ MAD {tech.mad_vol:.0f}% "
+                          f"= {ratio:.1f}）")
         elif picked:
             note = f"候補 {picked}件"
         elif not usable:
@@ -534,8 +536,8 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
         if absurd:
             sources.append(
                 f"⚠ IVが実現ボラの{uo.TH_IV_ABSURD:.0f}倍を超えたため外した銘柄 "
-                f"{len(absurd)}件: " + "、".join(absurd[:12])
-                + ("…" if len(absurd) > 12 else ""))
+                f"{len(absurd)}件: " + "、".join(absurd[:8])
+                + ("…" if len(absurd) > 8 else ""))
         unknown = getattr(rep, "earnings_unknown", None) or []
         if unknown:
             sources.append(

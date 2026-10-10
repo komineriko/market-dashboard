@@ -27,7 +27,7 @@ import us_options as uo
 REQUEST_SLEEP = float(os.environ.get("US_REQUEST_SLEEP", "0.15"))
 CHAIN_SLEEP = float(os.environ.get("US_CHAIN_SLEEP", "0.25"))
 # 板と決算を取りに行く銘柄数の上限。リストが数百本でも時間内に終わらせる。
-MAX_CHAINS = int(os.environ.get("US_MAX_CHAINS", "120"))
+MAX_CHAINS = int(os.environ.get("US_MAX_CHAINS", "400"))
 
 
 def log(msg: str) -> None:
@@ -236,19 +236,10 @@ def _earnings_from_yf(symbol: str, today: date) -> Optional[str]:
     """yfinance から次回決算日。見つからなければ None。"""
     import yfinance as yf
     tk = yf.Ticker(symbol)
-    # まず確定済みの予定表
-    try:
-        cal = tk.calendar
-    except Exception:  # noqa: BLE001
-        cal = None
     cands: List[date] = []
-    if isinstance(cal, dict):
-        v = cal.get("Earnings Date")
-        for x in (v if isinstance(v, (list, tuple)) else [v]):
-            d = _as_date(x)
-            if d:
-                cands.append(d)
-    # 次に過去＋将来の一覧
+
+    # 一覧のほうが当たりやすいので先に引く。取れたらもう1本は投げない
+    # （銘柄数が数百になると、1銘柄あたりのリクエスト数がそのまま効いてくる）。
     try:
         df = tk.get_earnings_dates(limit=12)
     except Exception:  # noqa: BLE001
@@ -257,6 +248,20 @@ def _earnings_from_yf(symbol: str, today: date) -> Optional[str]:
         for idx in df.index:
             d = _as_date(idx)
             if d:
+                cands.append(d)
+    future = sorted(d for d in cands if d >= today)
+    if future:
+        return future[0].isoformat()
+
+    try:
+        cal = tk.calendar
+    except Exception:  # noqa: BLE001
+        cal = None
+    if isinstance(cal, dict):
+        v = cal.get("Earnings Date")
+        for x in (v if isinstance(v, (list, tuple)) else [v]):
+            d = _as_date(x)
+            if d and d >= today:
                 cands.append(d)
     future = sorted(d for d in cands if d >= today)
     return future[0].isoformat() if future else None

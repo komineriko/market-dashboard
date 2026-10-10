@@ -630,6 +630,8 @@ class TestAbsurdIvGuard(unittest.TestCase):
         rep = ur.build_report([u], ASOF, uf.FetchReport(asof=ASOF), None)
         blob = " ".join(rep["meta"]["sources"])
         self.assertIn("WEIRD", blob, "外した銘柄が開示されていない")
+        self.assertIn("IV", blob)
+        self.assertIn("MAD", blob)
         row = next(r for r in rep["tech"]["rows"] if r["symbol"] == "WEIRD")
         self.assertIn("IV", row["cells"][-1])
 
