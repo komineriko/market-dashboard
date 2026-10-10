@@ -1,0 +1,85 @@
+name: Update US options screening
+
+on:
+  schedule:
+    # 月〜金 22:00 UTC。米国の引け（16:00 ET）の2時間後で、
+    # 夏時間でも冬時間でも引け後になる。日本時間では翌朝 07:00。
+    - cron: "0 22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "ユニバースの先頭N銘柄だけ処理する（動作確認用）"
+        required: false
+      date:
+        description: "基準日 (YYYY-MM-DD)。空なら日足の最終日"
+        required: false
+      snapshot:
+        description: "yes にすると取得した板をアーティファクトとして残す"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-us-options
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests yfinance
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: Build report
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ github.event.inputs.limit }}"
+          fi
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            ARGS="$ARGS --date ${{ github.event.inputs.date }}"
+          fi
+          if [ "${{ github.event.inputs.snapshot }}" = "yes" ]; then
+            ARGS="$ARGS --snapshot us_chain_snapshot.json"
+          fi
+          python update_us_options.py $ARGS
+
+      - name: Upload snapshot
+        if: ${{ github.event.inputs.snapshot == 'yes' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-chain-snapshot
+          path: us_chain_snapshot.json
+          retention-days: 3
+
+      - name: Commit and push if changed
+        run: |
+          if [ -z "$(git status --porcelain us_options.html)" ]; then
+            echo "変更なし。"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add us_options.html
+          git commit -m "chore: 米国株オプション自動更新 $(date -u '+%Y-%m-%d %H:%M UTC')"
+          for i in 1 2 3 4; do
+            if git push; then exit 0; fi
+            sleep $((2 ** i))
+            git pull --rebase || true
+          done
+          git push
