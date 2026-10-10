@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>米国株オプション 妙味スクリーニング</title>
+<style>
+  :root{
+    --bg:#0c0f16; --bg-elevated:#12161f; --card:#161b26; --card-border:#232937;
+    --text:#e7eaf0; --text-dim:#8993a4; --text-faint:#5b6472;
+    --up:#2fd480; --up-bg:rgba(47,212,128,0.14);
+    --down:#ff5d6c; --down-bg:rgba(255,93,108,0.14);
+    --accent:#4d8dff; --accent-soft:rgba(77,141,255,0.15);
+    --warn:#f5b942; --warn-bg:rgba(245,185,66,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:1120px;margin:0 auto;padding:20px 16px 96px;}
+  header.top{border-bottom:1px solid var(--card-border);padding-bottom:14px;margin-bottom:20px;}
+  header.top h1{font-size:19px;font-weight:700;margin:0 0 8px;letter-spacing:.02em;}
+  header.top .line{font-size:12.5px;color:var(--text-dim);line-height:1.7;}
+  header.top .gen{font-size:11.5px;color:var(--text-faint);margin-top:6px;}
+  header.top .fresh{margin-top:10px;font-size:12px;line-height:1.7;padding:8px 11px;
+    border-left:3px solid var(--accent);background:var(--accent-soft);
+    color:var(--text-dim);border-radius:0 4px 4px 0;}
+  header.top .fresh.late{border-left-color:var(--warn);background:var(--warn-bg);}
+  header.top .fresh b{color:var(--text);font-weight:600;}
+  header.top .fresh .why{display:block;margin-top:3px;font-size:11.5px;color:var(--text-dim);}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;
+    background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:1px;}
+
+  h2{font-size:15px;margin:32px 0 10px;padding-left:9px;border-left:3px solid var(--accent);}
+  h3{font-size:13px;margin:20px 0 8px;color:var(--text-dim);font-weight:600;}
+  p.note{font-size:12.5px;color:var(--text-dim);line-height:1.8;margin:8px 0;}
+  p.lead{font-size:12.5px;color:var(--text-dim);line-height:1.75;margin:0 0 10px;}
+
+  .card{background:var(--card);border:1px solid var(--card-border);border-radius:10px;
+    padding:14px 16px;margin-bottom:12px;}
+  .disc{border-left:3px solid var(--warn);background:var(--warn-bg);}
+  .disc .b{font-size:12.5px;color:var(--text-dim);line-height:1.8;}
+
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:min-content;}
+  th,td{padding:7px 10px;text-align:right;white-space:nowrap;
+    border-bottom:1px solid var(--card-border);}
+  th{color:var(--text-faint);font-weight:600;font-size:11.5px;text-align:right;
+    background:var(--bg-elevated);position:sticky;top:0;}
+  th:first-child,td:first-child{text-align:left;}
+  td.sym{font-weight:700;letter-spacing:.02em;}
+  tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--bg-elevated);}
+  .up{color:var(--up);} .down{color:var(--down);} .dim{color:var(--text-faint);}
+
+  /* 1ページ目のまとめ */
+  .page1{}
+  .sum{background:var(--card);border:1px solid var(--card-border);border-radius:10px;
+    padding:16px 18px;}
+  .sum .head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .sum .state{font-size:17px;font-weight:700;}
+  .sum .state.ok{color:var(--up);} .sum .state.warn{color:var(--warn);}
+  .sum .sub{font-size:12.5px;color:var(--text-dim);margin:8px 0 14px;line-height:1.75;}
+  .sum ul{margin:0;padding:0;list-style:none;}
+  .sum li{padding:7px 0;border-top:1px solid var(--card-border);font-size:12.5px;
+    line-height:1.7;}
+  .sum li b{display:inline-block;min-width:150px;color:var(--text-faint);
+    font-size:11.5px;font-weight:600;}
+  .sum .note{margin-top:12px;font-size:11.5px;color:var(--text-faint);line-height:1.7;}
+
+  .tally{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 2px;}
+  .tally div{flex:1 1 150px;background:var(--bg-elevated);border:1px solid var(--card-border);
+    border-radius:8px;padding:9px 12px;}
+  .tally .n{font-size:19px;font-weight:700;}
+  .tally .k{font-size:11px;color:var(--text-faint);margin-top:2px;}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;}
+  .chips span{font-size:11.5px;color:var(--text-dim);background:var(--bg-elevated);
+    border:1px solid var(--card-border);border-radius:999px;padding:4px 11px;line-height:1.5;}
+
+  details{margin:10px 0;}
+  summary{cursor:pointer;font-size:12.5px;color:var(--accent);padding:4px 0;}
+  details .body{font-size:12.5px;color:var(--text-dim);line-height:1.85;padding:6px 0 0;}
+  .defs{display:grid;gap:10px;}
+  .defs .term{color:var(--text);font-weight:600;font-size:12.5px;}
+
+  .empty{font-size:12.5px;color:var(--text-faint);line-height:1.8;
+    border:1px dashed var(--card-border);border-radius:8px;padding:12px 14px;}
+
+  footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--card-border);
+    font-size:11.5px;color:var(--text-faint);line-height:1.8;}
+
+  @media print{
+    :root{
+      --bg:#fff; --bg-elevated:#f4f6f9; --card:#fff; --card-border:#c9d0da;
+      --text:#111418; --text-dim:#3d4552; --text-faint:#6b7482;
+      --up:#0a7a45; --down:#c0203a; --accent:#1449a8; --warn:#8a6100;
+      --up-bg:rgba(10,122,69,0.10); --down-bg:rgba(192,32,58,0.10);
+      --warn-bg:rgba(138,97,0,0.10); --accent-soft:rgba(20,73,168,0.10);
+    }
+    @page{margin:14mm 12mm;}
+    body{background:#fff;}
+    .app{max-width:none;padding:0;}
+    .page1{break-after:page;}
+    h2{break-after:avoid;}
+    .card,.sum,.tw,table{break-inside:avoid;}
+    table{font-size:9pt;}
+    th{position:static;}
+    details{display:block;}
+    footer{break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script>
+/* ===US_OPTIONS_DATA_START=== */
+const US_DATA = null;
+/* ===US_OPTIONS_DATA_END=== */
+
+function $(tag, cls, text){
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (text !== undefined && text !== null) el.textContent = text;
+  return el;
+}
+
+function section(title){ return $('h2', null, title); }
+
+/* 「まだ新しいデータが無い」のか「更新が止まっている」のかを読者が区別できるようにする。
+   next_update_at はビルド時に基準日から算出済みなので、この表示のために差分は出ない。 */
+const LATE_GRACE_MS = 12 * 3600 * 1000;
+
+function freshness(m){
+  if (!m.next_update_at) return null;
+  const due = Date.parse(m.next_update_at);
+  if (isNaN(due)) return null;
+  const late = Date.now() > due + LATE_GRACE_MS;
+  const el = $('div', 'fresh' + (late ? ' late' : ''));
+  el.appendChild($('b', null, late ? '⚠ 更新が遅れています' : '✓ これが最新のデータです'));
+  el.appendChild(document.createTextNode(late
+    ? `　${m.next_update_label} に ${m.next_board_label} の板へ更新される予定でした。`
+    : `　次の更新は ${m.next_update_label}（${m.next_board_label} の引け後の板を反映）。`));
+  el.appendChild($('span', 'why',
+    '米国市場の引け後に組み直しているため、基準日はつねに直近の立会日です。'
+    + '土日・祝日は板が動かないので更新もありません。'));
+  return el;
+}
+
+function table(columns, rows, firstHeader){
+  const wrap = $('div','tw');
+  const t = $('table');
+  const thead = $('thead'); const htr = $('tr');
+  htr.appendChild($('th', null, firstHeader || '銘柄'));
+  columns.forEach(c => htr.appendChild($('th', null, c)));
+  thead.appendChild(htr); t.appendChild(thead);
+  const tb = $('tbody');
+  rows.forEach(r => {
+    const tr = $('tr');
+    tr.appendChild($('td','sym', r.symbol));
+    r.cells.forEach((c, i) => {
+      const td = $('td', null, c);
+      /* 最後の列だけ、プラスなら緑・マイナスなら赤にする。色は補助で、
+         符号は文字にも出ているので色が見えなくても読める。 */
+      if (i === r.cells.length - 1 && typeof r.accent === 'number'){
+        td.className = r.accent > 0 ? 'up' : (r.accent < 0 ? 'down' : '');
+      }
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); wrap.appendChild(t);
+  return wrap;
+}
+
+function render(d){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  if (!d){
+    app.appendChild($('h1', null, '米国株オプション 妙味スクリーニング'));
+    app.appendChild($('p','note','まだデータがありません。update_us_options.py を実行すると生成されます。'));
+    return;
+  }
+  const m = d.meta;
+
+  /* ---- ヘッダ ---- */
+  const head = $('header','top');
+  const h1 = $('h1', null, m.title);
+  h1.appendChild($('span','badge', m.horizon));
+  head.appendChild(h1);
+  head.appendChild($('div','line',
+    `基準日 ${m.base_date}（${m.base_weekday}） ／ 調査 ${m.scanned}銘柄 ／ ` +
+    `建玉のあるコントラクト ${Number(m.contracts).toLocaleString()} ／ ` +
+    `対象満期 ${(m.expiries||[]).map(e => e.slice(5)).join('・') || '—'}`));
+  head.appendChild($('div','gen', `生成 ${m.generated_at}`));
+  const fr = freshness(m);
+  if (fr) head.appendChild(fr);
+  app.appendChild(head);
+
+  /* ---- 1ページ目：まとめ ---- */
+  const su = d.summary;
+  const page1 = $('section','page1');
+  page1.appendChild(section('ひとことまとめ'));
+  const box = $('div','sum');
+  const hd = $('div','head');
+  hd.appendChild($('div','state ' + (su.level === 'warn' ? 'warn' : 'ok'),
+    (su.level === 'warn' ? '⚠ ' : '✓ ') + su.headline));
+  box.appendChild(hd);
+  box.appendChild($('div','sub', su.sub));
+
+  const tally = $('div','tally');
+  [['long_call','コール買い'],['bull_put','ブルプット'],
+   ['csp','P売り'],['covered_call','カバコ']].forEach(([k,label]) => {
+    const cell = $('div');
+    cell.appendChild($('div','n', String(su.counts[k])));
+    cell.appendChild($('div','k', label));
+    tally.appendChild(cell);
+  });
+  box.appendChild(tally);
+
+  const ul = $('ul');
+  (su.points || []).forEach(pt => {
+    const li = $('li');
+    li.appendChild($('b', null, pt.label));
+    li.appendChild($('div', null, pt.text));
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  box.appendChild($('div','note', '※ ' + su.disclaimer));
+  page1.appendChild(box);
+
+  const chips = $('div','chips');
+  (d.filters || []).forEach(f => chips.appendChild($('span', null, f)));
+  page1.appendChild(chips);
+  app.appendChild(page1);
+
+  /* ---- 各区分 ---- */
+  (d.sections || []).forEach(s => {
+    app.appendChild(section(s.title));
+    app.appendChild($('p','lead', s.lead));
+    if (s.rows && s.rows.length){
+      app.appendChild(table(s.columns, s.rows));
+    } else {
+      app.appendChild($('div','empty', '該当なし。' + (s.empty_reason || '')));
+    }
+  });
+
+  /* ---- 銘柄メモ ---- */
+  if (d.tech && d.tech.rows && d.tech.rows.length){
+    app.appendChild(section('銘柄メモ（IVの割安な順）'));
+    app.appendChild($('p','lead',
+      'スクリーニングに使った指標の一覧。IV/MAD が小さいほど「オプションが安い＝買い有利」、'
+      + '大きいほど「高い＝売り有利」。'));
+    app.appendChild(table(d.tech.columns, d.tech.rows));
+    if (d.tech.truncated){
+      app.appendChild($('p','note', `ほか ${d.tech.truncated} 銘柄はIVが割高な側のため省略。`));
+    }
+  }
+
+  /* ---- 定義 ---- */
+  app.appendChild(section('指標の定義'));
+  const det = document.createElement('details');
+  det.appendChild($('summary', null, '「乖離が大きい」「モメンタムが弱い」「IVが高い」を数値で定義する'));
+  const body = $('div','body defs');
+  (d.definitions || []).forEach(x => {
+    const g = $('div');
+    g.appendChild($('div','term', x.term));
+    g.appendChild($('div', null, x.body));
+    body.appendChild(g);
+  });
+  det.appendChild(body);
+  app.appendChild(det);
+
+  /* ---- 前提と限界 ---- */
+  app.appendChild(section('前提と限界'));
+  const lim = $('div','card disc');
+  const lb = $('div','b');
+  if (d.holdings_note) lb.appendChild($('div', null, '・' + d.holdings_note));
+  (d.limits || []).forEach(x => lb.appendChild($('div', null, '・' + x)));
+  lim.appendChild(lb);
+  app.appendChild(lim);
+
+  if (m.sources && m.sources.length){
+    const src = $('div','card');
+    src.appendChild($('div','b', 'データの出どころ'));
+    const sb = $('div','b');
+    m.sources.forEach(x => sb.appendChild($('div', null, '・' + x)));
+    src.appendChild(sb);
+    app.appendChild(src);
+  }
+
+  const f = $('footer');
+  f.appendChild($('div', null,
+    'これは保有銘柄および流動性のある銘柄に対するテクニカル指標とオプション価格の'
+    + '定量スクリーニング結果であり、投資助言ではありません。'
+    + '実際の売買判断はご自身の責任でお願いします。'));
+  app.appendChild(f);
+}
+
+/* 印刷時は折りたたみを開く。display:none にすると定義がPDFから丸ごと落ちる。 */
+window.addEventListener('beforeprint', () => {
+  document.querySelectorAll('details').forEach(d => { d.open = true; });
+});
+
+render(US_DATA);
+</script>
+</body>
+</html>
