@@ -1050,3 +1050,52 @@ class TestMacdSymmetry(unittest.TestCase):
         self.assertIsNone(m.gc_bars_ago)
         self.assertIsNotNone(m.dc_bars_ago, "下にいるのに下抜けを拾えていない")
         self.assertTrue(m.dead_cross_recent)
+
+
+class TestSignalIsSingleDirection(unittest.TestCase):
+    """同じ銘柄が強気と弱気の両方に出ないこと。
+
+    交差済みと「接近」を別々に判定していたため、上抜けた直後にヒストが
+    細り始めた銘柄が両方に出ていた（実データで NVDA が GC 13本前なのに
+    プット買いに並んだ）。交差済みを接近より優先する。
+    """
+
+    BULLISH = ("long_call", "bull_put")
+    BEARISH = ("long_put", "bear_call")
+
+    def test_gc_and_dc_are_mutually_exclusive(self):
+        for u in us_demo.build(ASOF):
+            t = uo.technicals(u)
+            self.assertFalse(t.gc_ok and t.dc_ok,
+                             f"{u.symbol} が上向きと下向きの両方になっている")
+
+    def test_crossed_beats_approaching(self):
+        """上抜け済みでヒストが細っていても、向きは上のまま。"""
+        closes = [b.close for b in load_nvda_closes()]
+        m = ui.macd(closes)
+        self.assertEqual(m.gc_bars_ago, 12)
+        self.assertLess(m.hist, m.hist_prev, "ヒストは細っている前提のデータ")
+        tech = uo.Technicals(symbol="X", spot=closes[-1], sma50=200.0, atr=5.0,
+                             dev_pct=1.0, dev_atr=1.0, rsi=50.0, macd=m,
+                             momentum=None, mad_vol=30.0, hv20ex=20.0)
+        self.assertTrue(tech.gc_ok)
+        self.assertFalse(tech.dc_ok, "上抜け済みなのに下向き扱いになっている")
+        self.assertEqual(tech.signal, "up")
+
+    def test_no_symbol_lands_in_both_directions(self):
+        rep = ur.build_report(us_demo.build(ASOF), ASOF, None, None)
+        by_key = {s["key"]: {r["symbol"] for r in s["rows"]}
+                  for s in rep["sections"]}
+        bulls = set().union(*(by_key.get(k, set()) for k in self.BULLISH))
+        bears = set().union(*(by_key.get(k, set()) for k in self.BEARISH))
+        self.assertEqual(bulls & bears, set(),
+                         "同じ銘柄が強気と弱気の両方に出ている")
+
+
+def load_nvda_closes():
+    import csv as _csv
+    with open(os.path.join(HERE_DIR, "fixtures", "nvda_eod_20261009.csv"),
+              encoding="utf-8") as fh:
+        return [ui.Bar(r["date"], float(r["high"]), float(r["low"]),
+                       float(r["close"]))
+                for r in _csv.DictReader(fh) if r["date"] <= "2026-10-08"]

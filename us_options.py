@@ -336,15 +336,33 @@ class Technicals:
         return "DIF>DEA" if m.hist > 0 else "DIF<DEA"
 
     @property
-    def gc_ok(self) -> bool:
-        """上抜け済み、または上抜け目前。"""
+    def signal(self) -> Optional[str]:
+        """MACDが示している向き。"up" / "down" / None のどれか1つ。
+
+        交差済みならその向き。まだ交差していなければ、近づいている向き。
+        交差を接近より優先するのが肝心で、これを分けて持つと
+        「上抜けた直後にヒストが細り始めた」銘柄が上にも下にも出てしまう
+        （実データで NVDA が GC 13本前なのにプット買いに並んだ）。
+        """
         m = self.macd
         if not m:
-            return False
+            return None
         if m.gc_bars_ago is not None:
-            return True
-        return bool(m.gap_atr is not None and -TH_GC_APPROACH_ATR <= m.gap_atr < 0
-                    and m.hist_prev is not None and m.hist > m.hist_prev)
+            return "up"
+        if m.dc_bars_ago is not None:
+            return "down"
+        if m.gap_atr is None or m.hist_prev is None:
+            return None
+        if -TH_GC_APPROACH_ATR <= m.gap_atr < 0 and m.hist > m.hist_prev:
+            return "up"
+        if 0 < m.gap_atr <= TH_GC_APPROACH_ATR and m.hist < m.hist_prev:
+            return "down"
+        return None
+
+    @property
+    def gc_ok(self) -> bool:
+        """上抜け済み、または上抜け目前。"""
+        return self.signal == "up"
 
     @property
     def dc_state(self) -> str:
@@ -362,13 +380,7 @@ class Technicals:
     @property
     def dc_ok(self) -> bool:
         """下抜け済み、または下抜け目前。gc_ok の鏡像。"""
-        m = self.macd
-        if not m:
-            return False
-        if m.dc_bars_ago is not None:
-            return True
-        return bool(m.gap_atr is not None and 0 < m.gap_atr <= TH_GC_APPROACH_ATR
-                    and m.hist_prev is not None and m.hist < m.hist_prev)
+        return self.signal == "down"
 
     @property
     def macd_state(self) -> str:
