@@ -37,6 +37,7 @@ MAX_DTE = 16                    # 2週間＋数日。ここを広げれば月限
 # --- 判定のしきい値 ---------------------------------------------------------
 TH_IV_CHEAP = 0.85              # IV ÷ MADボラ。これ以下で「買い有利」
 TH_IV_RICH = 1.00               # これ以上で「売り有利」
+TH_IV_ABSURD = 3.0              # これを超えたら候補から外す（下の注記）
 TH_OVEREXTENDED_ATR = 4.0       # 50日線からの乖離。これ以上は伸び切り
 TH_GC_APPROACH_ATR = 0.5        # DIFがDEAの下でも、この差以内なら接近扱い
 TH_MOMENTUM_OK = 3              # モメンタム改善スコア（5点満点）
@@ -361,6 +362,21 @@ def iv_ratio(iv: Optional[float], tech: Technicals) -> Optional[float]:
     return iv / tech.mad_vol
 
 
+def iv_is_sane(ratio: Optional[float]) -> bool:
+    """IVが実現ボラに対して極端すぎないか。
+
+    実現ボラの3倍を超えるIVは、まず「取り逃がされているイベント」か
+    気配の異常を疑うべきで、うまみではない。決算は別途外しているので、
+    それでも残る極端な値は説明がつかない。
+
+    これを入れないと、プレミアムを受け取る側のスクリーニングで
+    いちばん怪しい銘柄がいちばん上に来る。年率利回りで並べている以上、
+    異常な気配ほど上位に押し上げられてしまうため。
+    （実データで、実現ボラの8.5倍のIVを持つ銘柄がP売りの1位に出た）
+    """
+    return ratio is not None and ratio <= TH_IV_ABSURD
+
+
 # ---------------------------------------------------------------------------
 # 候補
 # ---------------------------------------------------------------------------
@@ -492,7 +508,7 @@ def screen_long_call(u: Underlying, asof: date, tech: Technicals,
         f = implied_forward(exp, u.spot, asof)
         iv = atm_iv(exp, f, t)
         ratio = iv_ratio(iv, tech)
-        if ratio is None or ratio > TH_IV_CHEAP:
+        if ratio is None or ratio > TH_IV_CHEAP or not iv_is_sane(ratio):
             continue
         gex = gex_for.get(exp.expiry)
         for r in exp.rows:
@@ -541,7 +557,7 @@ def screen_bull_put(u: Underlying, asof: date, tech: Technicals,
         f = implied_forward(exp, u.spot, asof)
         iv = atm_iv(exp, f, t)
         ratio = iv_ratio(iv, tech)
-        if ratio is None or ratio < TH_IV_RICH:
+        if ratio is None or ratio < TH_IV_RICH or not iv_is_sane(ratio):
             continue
         gex = gex_for.get(exp.expiry)
         strikes = sorted(r.strike for r in exp.rows)
@@ -611,7 +627,7 @@ def screen_cash_secured_put(u: Underlying, asof: date, tech: Technicals,
         f = implied_forward(exp, u.spot, asof)
         iv = atm_iv(exp, f, t)
         ratio = iv_ratio(iv, tech)
-        if ratio is None or ratio < TH_IV_RICH:
+        if ratio is None or ratio < TH_IV_RICH or not iv_is_sane(ratio):
             continue
         gex = gex_for.get(exp.expiry)
         for r in exp.rows:
@@ -661,7 +677,7 @@ def screen_covered_call(u: Underlying, asof: date, tech: Technicals,
         f = implied_forward(exp, u.spot, asof)
         iv = atm_iv(exp, f, t)
         ratio = iv_ratio(iv, tech)
-        if ratio is None or ratio < TH_IV_RICH:
+        if ratio is None or ratio < TH_IV_RICH or not iv_is_sane(ratio):
             continue
         gex = gex_for.get(exp.expiry)
         for r in exp.rows:

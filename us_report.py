@@ -376,6 +376,11 @@ DEFINITIONS = [
      "かつ現在もDIF>DEA。上抜けがゼロラインの下で起きた場合は「ゼロ下」と書く"
      "（ゼロ下は底打ちからの初動、ゼロ上はトレンド中の再加速）。"
      "まだDIFがDEAの下でも、差が0.5ATR以内でヒストが前日より上向きなら「GC接近」。"),
+    ("IVが極端な銘柄の除外",
+     f"ATM IV が MADボラの {uo.TH_IV_ABSURD:.0f}倍を超える銘柄は、"
+     "うまみではなく「取り逃がしているイベント」か気配の異常を疑うべきなので、"
+     "4区分すべてから外している。年率利回りで並べている以上、"
+     "異常な気配ほど上位に来てしまうため。除外した銘柄はデータの出どころに書く。"),
     ("IV割高・割安（IV/MAD）",
      "ATM IV ÷ MADボラ。MADボラは日次対数リターンの中央絶対偏差を60日で取り、"
      "1.4826倍して年率換算した頑健な実現ボラ推定値。素のHV20は決算ギャップ1本に"
@@ -418,6 +423,7 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
                  top_per_section: int = 8) -> Dict[str, Any]:
     buckets: Dict[str, List[uo.Candidate]] = {k: [] for k, _ in uo.SCREENS}
     tech_rows: List[Dict[str, Any]] = []
+    absurd: List[str] = []
     contracts = 0
     expiry_labels: List[str] = []
 
@@ -439,7 +445,10 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
             iv = uo.atm_iv(e0, f, t)
             ratio = uo.iv_ratio(iv, tech)
         picked = sum(len(v) for v in found.values())
-        if picked:
+        if ratio is not None and not uo.iv_is_sane(ratio):
+            note = "IVが異常に高く除外"
+            absurd.append(u.symbol)
+        elif picked:
             note = f"候補 {picked}件"
         elif not usable:
             # 条件に合う満期が1本も無い。ほぼ決算またぎ。
@@ -489,6 +498,11 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
             sources.append(
                 f"⚠ 日足の配信が板より {lag}日遅れている。現値は板のパリティから"
                 "逆算した値を使い、乖離・RSI・MACDは1本前の日足で計算している")
+        if absurd:
+            sources.append(
+                f"⚠ IVが実現ボラの{uo.TH_IV_ABSURD:.0f}倍を超えたため外した銘柄 "
+                f"{len(absurd)}件: " + "、".join(absurd[:12])
+                + ("…" if len(absurd) > 12 else ""))
         unknown = getattr(rep, "earnings_unknown", None) or []
         if unknown:
             sources.append(

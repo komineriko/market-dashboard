@@ -579,3 +579,56 @@ class TestDateCoercion(unittest.TestCase):
         self.assertNotIsInstance(got, pd.Timestamp)
         self.assertGreater(got, date(2026, 1, 1))     # ここで例外が出ないこと
         self.assertIsNone(uf._as_date(pd.NaT))
+
+
+class TestAbsurdIvGuard(unittest.TestCase):
+    """実現ボラに対してIVが極端な銘柄を候補から外す。
+
+    年率利回りで並べている以上、気配が異常な銘柄ほど上位に押し上げられる。
+    実データで、実現ボラの8.5倍のIVを持つ銘柄がP売りの1位に出た。
+    """
+
+    def _underlying(self, iv: float) -> uo.Underlying:
+        import random
+        rng = random.Random(3)
+        closes = [50.0]
+        for _ in range(140):
+            closes.append(closes[-1] * (1 + rng.gauss(0.0015, 0.012)))
+        bars = [ui.Bar(f"2026-{1 + i // 28:02d}-{1 + i % 28:02d}", c * 1.01,
+                       c * 0.99, c) for i, c in enumerate(closes)]
+        spot = bars[-1].close
+        return uo.Underlying(symbol="X", bars=bars,
+                             expiries=[flat_chain(spot, 7, iv, step=2.5, oi=5000),
+                                       flat_chain(spot, 14, iv, step=2.5, oi=5000)])
+
+    def test_sane_threshold(self):
+        self.assertTrue(uo.iv_is_sane(1.0))
+        self.assertTrue(uo.iv_is_sane(uo.TH_IV_ABSURD))
+        self.assertFalse(uo.iv_is_sane(uo.TH_IV_ABSURD + 0.01))
+        self.assertFalse(uo.iv_is_sane(None))
+
+    def test_moderately_rich_iv_still_produces_candidates(self):
+        u = self._underlying(0.42)
+        tech = uo.technicals(u)
+        ratio = uo.iv_ratio(42.0, tech)
+        self.assertTrue(uo.iv_is_sane(ratio), f"IV/MAD {ratio} は正常な範囲のはず")
+        _, found = uo.screen_symbol(u, ASOF)
+        self.assertTrue(sum(len(v) for v in found.values()) > 0)
+
+    def test_absurd_iv_produces_nothing(self):
+        u = self._underlying(2.5)          # 実現ボラの10倍以上
+        tech = uo.technicals(u)
+        ratio = uo.iv_ratio(250.0, tech)
+        self.assertFalse(uo.iv_is_sane(ratio))
+        _, found = uo.screen_symbol(u, ASOF)
+        self.assertEqual(sum(len(v) for v in found.values()), 0,
+                         "IVが異常な銘柄が候補に残っている")
+
+    def test_excluded_symbol_is_disclosed(self):
+        u = self._underlying(2.5)
+        u.symbol = "WEIRD"
+        rep = ur.build_report([u], ASOF, uf.FetchReport(asof=ASOF), None)
+        blob = " ".join(rep["meta"]["sources"])
+        self.assertIn("WEIRD", blob, "外した銘柄が開示されていない")
+        row = next(r for r in rep["tech"]["rows"] if r["symbol"] == "WEIRD")
+        self.assertIn("IV", row["cells"][-1])
