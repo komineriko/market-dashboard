@@ -403,9 +403,17 @@ class TestReport(unittest.TestCase):
         for r in self.rep["tech"]["rows"]:
             self.assertEqual(len(r["cells"]), len(cols))
 
-    def test_all_four_sections_are_present_in_order(self):
+    def test_sections_match_the_screens_in_order(self):
+        """区分を足したらレポート側も自動でついてくること。"""
         self.assertEqual([s["key"] for s in self.rep["sections"]],
-                         ["long_call", "bull_put", "csp", "covered_call"])
+                         [k for k, _ in uo.SCREENS])
+
+    def test_every_screen_has_a_title_lead_columns_and_empty_reason(self):
+        for key, _ in uo.SCREENS:
+            self.assertIn(key, ur.STRATEGY_TITLES, f"{key} の見出しが無い")
+            self.assertIn(key, ur.STRATEGY_LEADS, f"{key} の説明が無い")
+            self.assertIn(key, ur.SECTION_SPEC, f"{key} の列定義が無い")
+            self.assertIn(key, ur.EMPTY_REASONS, f"{key} の該当なし理由が無い")
 
     def test_empty_section_explains_itself(self):
         rep = ur.build_report([], ASOF, None, None)
@@ -882,3 +890,163 @@ class TestPageTemplate(unittest.TestCase):
         """印刷時に details を display:none にすると定義がPDFから丸ごと落ちる。"""
         self.assertIn("beforeprint", self.html)
         self.assertNotIn("details{display:none;}", self.html.replace(" ", ""))
+
+
+class TestBearishScreens(unittest.TestCase):
+    """弱気側の3区分。強気側の鏡像として成立していること。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.found = {}
+        cls.tech = {}
+        for u in us_demo.build(ASOF):
+            t, f = uo.screen_symbol(u, ASOF)
+            cls.found[u.symbol] = f
+            cls.tech[u.symbol] = t
+
+    def test_falling_with_cheap_iv_gives_a_long_put(self):
+        self.assertTrue(self.found["DELT"]["long_put"])
+
+    def test_rising_names_never_give_a_long_put(self):
+        for sym in ("ALFA", "GAMM"):
+            self.assertFalse(self.found[sym]["long_put"],
+                             f"{sym} は上向きなのでプット買いに出てはいけない")
+
+    def test_weak_momentum_with_rich_iv_gives_a_bear_call(self):
+        self.assertTrue(self.found["THET"]["bear_call"])
+
+    def test_strong_momentum_never_gives_a_bear_call(self):
+        for sym in ("GAMM", "BETA"):
+            self.assertFalse(self.found[sym]["bear_call"],
+                             f"{sym} はモメンタムが強いのでベアコールに出てはいけない")
+
+    def test_long_put_delta_is_in_band(self):
+        for c in self.found["DELT"]["long_put"]:
+            self.assertGreaterEqual(abs(c.legs[0].delta), uo.PUT_DELTA[0])
+            self.assertLessEqual(abs(c.legs[0].delta), uo.PUT_DELTA[1])
+
+    def test_long_put_breakeven_is_below_spot(self):
+        c = self.found["DELT"]["long_put"][0]
+        self.assertLess(c.metrics["breakeven"], c.spot)
+        self.assertLess(c.metrics["breakeven_pct"], 0)
+
+
+class TestBearCallArithmetic(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.c = None
+        for u in us_demo.build(ASOF):
+            _, f = uo.screen_symbol(u, ASOF)
+            if f["bear_call"]:
+                cls.c = f["bear_call"][0]
+                break
+
+    def test_a_candidate_exists(self):
+        self.assertIsNotNone(self.c)
+
+    def test_sells_the_lower_strike(self):
+        short, long_leg = self.c.legs
+        self.assertEqual(short.action, "売")
+        self.assertEqual(long_leg.action, "買")
+        self.assertLess(short.strike, long_leg.strike,
+                        "ベアコールは下の行使価格を売って上を買う")
+
+    def test_both_legs_are_above_spot(self):
+        self.assertGreater(self.c.legs[0].strike, self.c.spot)
+
+    def test_credit_plus_max_loss_equals_the_width(self):
+        m = self.c.metrics
+        self.assertAlmostEqual(m["credit"] + m["max_loss"],
+                               m["width"] * uo.MULTIPLIER, places=4)
+
+    def test_breakeven_is_above_spot(self):
+        """ベアコールは「上がらなければ勝ち」。損益分岐が現値より下では成立しない。"""
+        self.assertGreater(self.c.metrics["breakeven"], self.c.spot)
+        self.assertGreater(self.c.metrics["cushion_pct"], 0)
+
+
+class TestCalendar(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.c = None
+        for u in us_demo.build(ASOF):
+            _, f = uo.screen_symbol(u, ASOF)
+            if f["calendar"]:
+                cls.c = f["calendar"][0]
+                break
+
+    def test_a_candidate_exists(self):
+        self.assertIsNotNone(self.c)
+
+    def test_sells_the_near_leg_and_buys_the_far_leg(self):
+        sell, buy = self.c.legs
+        self.assertEqual(sell.action, "売")
+        self.assertEqual(buy.action, "買")
+        self.assertEqual(sell.strike, buy.strike, "同じ行使価格で組む")
+        self.assertGreater(self.c.metrics["back_expiry_dte"], self.c.dte)
+
+    def test_it_is_a_debit(self):
+        """後ろのほうが高いので、必ず払って入る。受け取りになったら組み方が逆。"""
+        self.assertGreater(self.c.metrics["debit"], 0)
+
+    def test_front_iv_is_richer_than_the_back(self):
+        m = self.c.metrics
+        self.assertGreaterEqual(m["term_ratio"], uo.CAL_MIN_TERM_RATIO)
+        self.assertGreater(m["iv_front"], m["iv_back"])
+
+    def test_strike_is_near_the_money(self):
+        self.assertLess(abs(self.c.metrics["distance_pct"]), 5.0)
+
+    def test_back_expiry_date_is_reported(self):
+        """日付が無いと発注できない。"""
+        self.assertTrue(self.c.metrics.get("back_expiry"))
+
+    def test_a_trending_name_is_rejected(self):
+        """株価が離れていくと負けるので、トレンドが出ていたら組まない。"""
+        for u in us_demo.build(ASOF):
+            t = uo.technicals(u)
+            if t.dev_atr is not None and abs(t.dev_atr) > uo.CAL_MAX_DEV_ATR:
+                _, f = uo.screen_symbol(u, ASOF)
+                self.assertEqual(f["calendar"], [],
+                                 f"{u.symbol} はトレンドが出ているのに出ている")
+
+    def test_contango_is_rejected(self):
+        """手前が後ろより安い（逆ザヤ）ときは組まない。"""
+        import us_demo as dm
+        u = [x for x in dm.build(ASOF) if x.symbol == "KAPP"][0]
+        spot = u.bars[-1].close
+        # 手前を安く、後ろを高くして逆ザヤにする
+        u.expiries = [dm._chain(spot, ASOF, 7, 0.25, 5.0)]
+        u.back_expiries = [dm._chain(spot, ASOF, 40, 0.38, 5.0)]
+        _, f = uo.screen_symbol(u, ASOF)
+        self.assertEqual(f["calendar"], [])
+
+    def test_no_back_month_means_no_candidate(self):
+        import us_demo as dm
+        u = [x for x in dm.build(ASOF) if x.symbol == "KAPP"][0]
+        u.back_expiries = []
+        _, f = uo.screen_symbol(u, ASOF)
+        self.assertEqual(f["calendar"], [])
+
+
+class TestMacdSymmetry(unittest.TestCase):
+
+    def test_dead_cross_mirrors_the_golden_cross(self):
+        import csv as _csv
+        with open(os.path.join(HERE_DIR, "fixtures", "nvda_eod_20261009.csv"),
+                  encoding="utf-8") as fh:
+            rows = [r for r in _csv.DictReader(fh) if r["date"] <= "2026-10-08"]
+        c = [float(r["close"]) for r in rows]
+        up = ui.macd(c)
+        self.assertIsNotNone(up.gc_bars_ago)
+        self.assertIsNone(up.dc_bars_ago, "上にいるのに下抜けも拾っている")
+
+        down = list(c)
+        for _ in range(10):
+            down.append(down[-1] * 0.97)
+        m = ui.macd(down)
+        self.assertIsNone(m.gc_bars_ago)
+        self.assertIsNotNone(m.dc_bars_ago, "下にいるのに下抜けを拾えていない")
+        self.assertTrue(m.dead_cross_recent)

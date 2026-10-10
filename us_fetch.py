@@ -28,6 +28,8 @@ REQUEST_SLEEP = float(os.environ.get("US_REQUEST_SLEEP", "0.15"))
 CHAIN_SLEEP = float(os.environ.get("US_CHAIN_SLEEP", "0.25"))
 # 板と決算を取りに行く銘柄数の上限。リストが数百本でも時間内に終わらせる。
 MAX_CHAINS = int(os.environ.get("US_MAX_CHAINS", "400"))
+# カレンダーの後ろ足を取りに行く銘柄数の上限。手前の板とは別に引くので分けている。
+MAX_CALENDARS = int(os.environ.get("US_MAX_CALENDARS", "80"))
 
 
 def log(msg: str) -> None:
@@ -365,12 +367,13 @@ def chain_from_frames(calls, puts) -> List[uo.StrikeQuote]:
     return [rows[k] for k in sorted(rows)]
 
 
-def fetch_expiries(symbol: str, asof: date, max_dte: int = uo.MAX_DTE
-                   ) -> List[uo.Expiry]:
-    """max_dte 以内の満期をすべて取る。
+def fetch_expiries(symbol: str, asof: date, max_dte: int = uo.MAX_DTE,
+                   min_dte: int = 0) -> List[uo.Expiry]:
+    """指定した残存日数の範囲の満期をすべて取る。
 
-    手前の満期も取るのは、ウォールを「その満期までの全満期を合算」で出すため。
-    当週の建玉を落とすと壁が実勢より薄く出る。
+    既定では手前の満期も取る。ウォールを「その満期までの全満期を合算」で
+    出すので、当週の建玉を落とすと壁が実勢より薄く出るため。
+    カレンダーの後ろ足を取るときは min_dte を立てて離れた限月だけを採る。
     """
     import yfinance as yf
     try:
@@ -386,7 +389,7 @@ def fetch_expiries(symbol: str, asof: date, max_dte: int = uo.MAX_DTE
             dte = (date.fromisoformat(d) - asof).days
         except ValueError:
             continue
-        if dte < 0 or dte > max_dte:
+        if dte < min_dte or dte > max_dte:
             continue
         try:
             ch = tk.option_chain(d)
@@ -424,6 +427,7 @@ class FetchReport:
     universe_source: str = ""
     shortlisted: int = 0            # テクニカルを通った銘柄数
     capped: int = 0                 # 上限で見送った銘柄数
+    calendar_fetched: int = 0       # 後ろの限月まで取りに行った銘柄数
 
     def __post_init__(self):
         for f in ("ok", "no_bars", "no_chain", "earnings_blocked",
@@ -525,7 +529,36 @@ def load_universe(symbols: Sequence[str] = None,
             rep.earnings_blocked.append(sym)
         out.append(u)
         rep.ok.append(sym)
+
+    _attach_back_expiries(out, board_date, rep)
     return out, rep
+
+
+def _attach_back_expiries(unders: List[uo.Underlying], board_date: date,
+                          rep: FetchReport, cap: int = None) -> None:
+    """カレンダーの後ろ足を、対象になりうる銘柄にだけ付ける。
+
+    後ろの限月は手前と別のリクエストになるので、全銘柄ぶん取ると
+    board の取得が倍になる。トレンドが出ていない銘柄しかカレンダーの
+    対象にならないので、先にそこで絞ってから売買代金の大きい順に取る。
+    """
+    cap = MAX_CALENDARS if cap is None else cap
+    eligible = []
+    for u in unders:
+        tech = uo.technicals(u)
+        if tech.dev_atr is None or abs(tech.dev_atr) > uo.CAL_MAX_DEV_ATR:
+            continue
+        if not uo.usable_expiries(u, board_date):
+            continue
+        eligible.append((dollar_volume(u.bars), u))
+    eligible.sort(key=lambda x: x[0], reverse=True)
+    for _, u in eligible[:cap]:
+        u.back_expiries = fetch_expiries(u.symbol, board_date,
+                                         max_dte=uo.CAL_BACK_MAX_DTE,
+                                         min_dte=uo.CAL_BACK_MIN_DTE)
+        if u.back_expiries:
+            rep.calendar_fetched += 1
+    log(f"カレンダーの後ろ足: {rep.calendar_fetched}銘柄")
 
 
 # ---------------------------------------------------------------------------
@@ -536,26 +569,31 @@ def dump_underlying(u: uo.Underlying) -> dict:
     return {
         "symbol": u.symbol, "earnings": u.earnings, "held": u.held,
         "bars": [[b.date, b.high, b.low, b.close] for b in u.bars],
-        "expiries": [
-            {"expiry": e.expiry,
-             "rows": [[r.strike,
-                       [r.call.bid, r.call.ask, r.call.last, r.call.volume, r.call.oi],
-                       [r.put.bid, r.put.ask, r.put.last, r.put.volume, r.put.oi]]
-                      for r in e.rows]}
-            for e in u.expiries
-        ],
+        "expiries": [_dump_expiry(e) for e in u.expiries],
+        "back_expiries": [_dump_expiry(e) for e in u.back_expiries],
     }
+
+
+def _dump_expiry(e: uo.Expiry) -> dict:
+    return {"expiry": e.expiry,
+            "rows": [[r.strike,
+                      [r.call.bid, r.call.ask, r.call.last, r.call.volume, r.call.oi],
+                      [r.put.bid, r.put.ask, r.put.last, r.put.volume, r.put.oi]]
+                     for r in e.rows]}
 
 
 def load_underlying(d: dict) -> uo.Underlying:
     def q(v):
         return uo.Quote(bid=v[0], ask=v[1], last=v[2], volume=int(v[3] or 0),
                         oi=int(v[4] or 0))
+    def exps(key):
+        return [uo.Expiry(expiry=e["expiry"],
+                          rows=[uo.StrikeQuote(strike=r[0], call=q(r[1]), put=q(r[2]))
+                                for r in e["rows"]])
+                for e in d.get(key, [])]
+
     return uo.Underlying(
         symbol=d["symbol"], earnings=d.get("earnings"), held=d.get("held", True),
         bars=[ui.Bar(b[0], b[1], b[2], b[3]) for b in d["bars"]],
-        expiries=[uo.Expiry(expiry=e["expiry"],
-                            rows=[uo.StrikeQuote(strike=r[0], call=q(r[1]), put=q(r[2]))
-                                  for r in e["rows"]])
-                  for e in d["expiries"]],
+        expiries=exps("expiries"), back_expiries=exps("back_expiries"),
     )

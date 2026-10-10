@@ -16,13 +16,18 @@ import us_options as uo
 
 
 def _bars(seed: int, n: int, start: float, drift: float, vol: float,
-          finish_up: int = 0) -> List[ui.Bar]:
-    """日足。finish_up 本だけ最後を素直な上げにして、モメンタムを立たせる。"""
+          finish: int = 0) -> List[ui.Bar]:
+    """日足。finish 本だけ最後を素直な片方向にして、モメンタムを立たせる。
+
+    finish が正なら上げ、負なら下げ。
+    """
     rng = random.Random(seed)
     closes = [start]
+    tail = abs(finish)
     for i in range(n - 1):
-        if finish_up and i >= n - 1 - finish_up:
-            r = abs(rng.gauss(drift, vol)) + vol * 0.5
+        if tail and i >= n - 1 - tail:
+            step = abs(rng.gauss(drift, vol)) + vol * 0.5
+            r = step if finish > 0 else -step
         else:
             r = rng.gauss(drift, vol)
         closes.append(closes[-1] * math.exp(r))
@@ -38,17 +43,17 @@ def _bars(seed: int, n: int, start: float, drift: float, vol: float,
 
 
 def _bars_at(seed: int, n: int, start: float, vol: float, target_dev_atr: float,
-             finish_up: int = 0) -> List[ui.Bar]:
+             finish: int = 0) -> List[ui.Bar]:
     """50日線からの乖離が target_dev_atr（ATR換算）になるようドリフトを合わせる。
 
     ドリフトを直接決め打ちすると、乱数の引き次第で銘柄が全部「伸び切り」に
     寄ってしまい、区分ごとの挙動を確認できない。
     """
-    lo, hi = -0.004, 0.006
-    bars = _bars(seed, n, start, 0.0, vol, finish_up)
+    lo, hi = -0.006, 0.006
+    bars = _bars(seed, n, start, 0.0, vol, finish)
     for _ in range(40):
         mid = (lo + hi) / 2
-        bars = _bars(seed, n, start, mid, vol, finish_up)
+        bars = _bars(seed, n, start, mid, vol, finish)
         closes = [b.close for b in bars]
         s50, a = ui.sma(closes, 50), ui.atr(bars)
         dev = (closes[-1] - s50) / a
@@ -96,16 +101,19 @@ def build(asof: Optional[date] = None) -> List[uo.Underlying]:
     asof = asof or date(2026, 10, 9)
     out: List[uo.Underlying] = []
 
-    def add(sym, seed, start, dev_atr, vol, finish_up, ivs, step, earnings=None,
-            spread=0.02, oi=3000, held=True):
-        bars = _bars_at(seed, 160, start, vol, dev_atr, finish_up)
+    def add(sym, seed, start, dev_atr, vol, finish, ivs, step, earnings=None,
+            spread=0.02, oi=3000, held=True, back=None):
+        bars = _bars_at(seed, 160, start, vol, dev_atr, finish)
         # 日足の最終日を基準日に合わせる
         bars = [ui.Bar(b.date, b.high, b.low, b.close) for b in bars]
         bars[-1] = ui.Bar(asof.isoformat(), bars[-1].high, bars[-1].low, bars[-1].close)
         spot = bars[-1].close
         exps = [_chain(spot, asof, dte, iv, step, oi=oi, spread=spread)
                 for dte, iv in ivs]
+        backs = [_chain(spot, asof, dte, iv, step, oi=oi, spread=spread)
+                 for dte, iv in (back or [])]
         out.append(uo.Underlying(symbol=sym, bars=bars, expiries=exps,
+                                 back_expiries=backs,
                                  earnings=earnings, held=held))
 
     # IVが割安で上抜け直後、まだ伸び切っていない → コール買い
@@ -121,4 +129,11 @@ def build(asof: Optional[date] = None) -> List[uo.Underlying]:
     add("ZETA", 53, 45.0, 1.2, 0.018, 4, [(10, 0.46)], 2.5, spread=0.30)
     # 建玉が薄い → 流動性で落ちる
     add("OMEG", 67, 30.0, 1.2, 0.018, 4, [(10, 0.46)], 1.0, oi=100)
+    # 下げに転じてIVが割安 → プット買い
+    add("DELT", 71, 150.0, -1.2, 0.017, -4, [(3, 0.20), (10, 0.21), (15, 0.22)], 2.5)
+    # 勢いが落ちてIVが割高 → ベアコール
+    add("THET", 83, 95.0, -1.0, 0.019, -4, [(4, 0.47), (11, 0.46), (15, 0.45)], 2.5)
+    # レンジで手前のIVが高い（順ザヤ）→ カレンダー
+    add("KAPP", 97, 180.0, 0.2, 0.013, 0, [(7, 0.42), (14, 0.38)], 5.0,
+        back=[(35, 0.32), (49, 0.30)])
     return out

@@ -20,6 +20,9 @@ STRATEGY_TITLES = {
     "bull_put": "B. ブルプット・スプレッド候補",
     "csp": "C. キャッシュセキュアードP売り候補",
     "covered_call": "D. カバードコール候補",
+    "long_put": "E. プット買い候補",
+    "bear_call": "F. ベアコール・スプレッド候補",
+    "calendar": "G. カレンダースプレッド候補",
 }
 
 STRATEGY_LEADS = {
@@ -30,6 +33,12 @@ STRATEGY_LEADS = {
     "csp": "下がったら買ってもいい水準でプットを売る。割り当てられたら現物を持つ。",
     "covered_call": "持っている株に上限をつけてプレミアムを取る。"
                     "上に抜けたら株は持っていかれる。",
+    "long_put": "下に向かう前提。IVが割安なときだけ買う（IV/MAD ≤ "
+                f"{uo.TH_IV_CHEAP:.2f}）。損失は払ったプレミアムまで。",
+    "bear_call": "上がらなければ勝ち。コール売りだが、損失は幅で止まる"
+                 f"（受取÷最大損失 ≥ {uo.MIN_CREDIT_RATIO:.0%}）。",
+    "calendar": "手前を売って後ろを買う。株価がその場に留まるほど得をする。"
+                "手前のIVが後ろより高いとき（順ザヤ）がいちばん有利。",
 }
 
 
@@ -152,6 +161,76 @@ def _row_covered_call(c: uo.Candidate) -> Dict[str, Any]:
     }
 
 
+def _row_long_put(c: uo.Candidate) -> Dict[str, Any]:
+    leg, m = c.legs[0], c.metrics
+    target = m.get("target")
+    target_txt = "—" if target is None else (
+        f"{target:,.2f}" + ("※" if m.get("beyond_wall") else ""))
+    return {
+        "symbol": c.symbol,
+        "cells": [
+            _dte_label(c),
+            f"{leg.strike:,.2f} P",
+            _quote(leg),
+            _f(leg.price),
+            _f(leg.delta),
+            _f(leg.iv, 1, "%"),
+            _f(m.get("iv_ratio")),
+            f"{leg.oi:,}",
+            _f(leg.spread_pct, 1, "%"),
+            f"{_f(m.get('breakeven'))}（{_pct(m.get('breakeven_pct'))}）",
+            target_txt,
+            _f(m.get("at_call_wall")),
+            _pct(m.get("upside_pct"), 0),
+        ],
+        "accent": m.get("upside_pct"),
+    }
+
+
+def _row_bear_call(c: uo.Candidate) -> Dict[str, Any]:
+    short, long_leg = c.legs[0], c.legs[1]
+    m = c.metrics
+    return {
+        "symbol": c.symbol,
+        "cells": [
+            _dte_label(c),
+            f"{short.strike:,.2f} C",
+            f"{long_leg.strike:,.2f} C",
+            _money(m.get("credit")),
+            _money(m.get("max_loss")),
+            _f(m.get("credit_ratio")),
+            f"{_f(m.get('breakeven'))}（+{abs(m.get('cushion_pct') or 0):.1f}%）",
+            _f(m.get("pop"), 0, "%"),
+            _f(m.get("iv_ratio")),
+        ],
+        "accent": m.get("credit_ratio"),
+    }
+
+
+def _row_calendar(c: uo.Candidate) -> Dict[str, Any]:
+    sell, buy = c.legs[0], c.legs[1]
+    m = c.metrics
+    back = m.get("back_expiry") or ""
+    back_label = (f"{back[5:].replace('-', '/')}（{m['back_expiry_dte']}日）"
+                  if back else f"{m['back_expiry_dte']}日")
+    return {
+        "symbol": c.symbol,
+        "cells": [
+            _dte_label(c),
+            back_label,
+            f"{sell.strike:,.2f} C（{_pct(m.get('distance_pct'))}）",
+            _money(sell.price * uo.MULTIPLIER),
+            _money(buy.price * uo.MULTIPLIER),
+            _money(m.get("debit")),
+            _f(m.get("iv_front"), 1, "%"),
+            _f(m.get("iv_back"), 1, "%"),
+            _f(m.get("term_ratio")),
+            "決算またぎ" if m.get("back_crosses_earnings") else "—",
+        ],
+        "accent": None,
+    }
+
+
 SECTION_SPEC = {
     "long_call": (
         ["満期（残）", "権利行使", "BID / ASK", "MID", "Δ", "IV", "IV/MAD",
@@ -173,6 +252,21 @@ SECTION_SPEC = {
          "下落バッファ", "CALL WALL", "IV/MAD"],
         _row_covered_call,
     ),
+    "long_put": (
+        ["満期（残）", "権利行使", "BID / ASK", "MID", "Δ", "IV", "IV/MAD",
+         "OI", "スプレッド", "損益分岐（必要下落）", "目標", "目標時", "伸びしろ"],
+        _row_long_put,
+    ),
+    "bear_call": (
+        ["満期（残）", "売る", "買う", "受取", "最大損失", "受取÷損失",
+         "損益分岐（余裕）", "勝率目安", "IV/MAD"],
+        _row_bear_call,
+    ),
+    "calendar": (
+        ["売る満期（残）", "買う満期（残）", "権利行使（現値差）", "受取", "支払",
+         "ネット支払", "手前IV", "後ろIV", "手前÷後ろ", "備考"],
+        _row_calendar,
+    ),
 }
 
 # 候補が出なかったときに、何が足りなかったのかを書く
@@ -187,6 +281,16 @@ EMPTY_REASONS = {
            "条件に合うデルタ帯の気配が無かった。",
     "covered_call": "伸び切った、または勢いが細り始めた銘柄で、"
                     "IVが割高なものが無かった。",
+    "long_put": f"IVが割安（IV/MAD ≤ {uo.TH_IV_CHEAP:.2f}）でMACDが下抜けている"
+                "銘柄が無かった。下げ局面はIVが上がりやすく、"
+                "割安なまま買える場面はそもそも多くない。",
+    "bear_call": f"モメンタム{uo.TH_MOMENTUM_WEAK}以下かつMACDが下抜け、"
+                 f"さらにIVが割高（IV/MAD ≥ {uo.TH_IV_RICH:.2f}）で"
+                 f"受取÷最大損失が{uo.MIN_CREDIT_RATIO:.0%}を超える組み合わせが無かった。",
+    "calendar": f"50日線からの乖離が{uo.CAL_MAX_DEV_ATR:.1f}ATR以内で、"
+                f"手前のIVが後ろの{uo.CAL_MIN_TERM_RATIO:.2f}倍以上（順ザヤ）に"
+                "なっている銘柄が無かった。逆ザヤのときに組むと、"
+                "動かなくても負けやすい。",
 }
 
 
@@ -205,7 +309,7 @@ def _tech_row(t: uo.Technicals, u: uo.Underlying, iv: Optional[float],
             _pct(t.dev_pct),
             _f(t.rsi, 1),
             "—" if mom is None else f"{mom} / 5",
-            t.gc_state,
+            t.macd_state,
             _f(iv, 1, "%"),
             _f(t.hv20ex, 1, "%"),
             _f(t.mad_vol, 1, "%"),
@@ -226,68 +330,104 @@ TECH_ROW_CAP = 25
 # まとめ
 # ---------------------------------------------------------------------------
 
+TALLY_LABELS = {
+    "long_call": "コール買い",
+    "bull_put": "ブルプット",
+    "csp": "P売り",
+    "covered_call": "カバコ",
+    "long_put": "プット買い",
+    "bear_call": "ベアコール",
+    "calendar": "カレンダー",
+}
+
+# 方向の内訳。見出しをどちら寄りにするかの判定に使う。
+BULLISH = ("long_call", "bull_put", "csp")
+BEARISH = ("long_put", "bear_call")
+NEUTRAL = ("calendar",)
+
+
+def _point_for(key: str, c: uo.Candidate) -> Optional[Dict[str, str]]:
+    """区分ごとの一番手を1行で書く。"""
+    m = c.metrics
+    label = TALLY_LABELS[key] + "の一番手"
+    if key == "long_call":
+        tail = (f"{_f(m['target'])} まで届けば {_pct(m.get('upside_pct'), 0)}。"
+                if m.get("target") else "上値の目標は算出できず。")
+        return {"label": label, "text":
+                f"{c.symbol} {c.expiry[5:]} {c.legs[0].strike:,.0f}C。"
+                f"IV/MAD {m['iv_ratio']:.2f} の割安。" + tail}
+    if key == "long_put":
+        tail = (f"{_f(m['target'])} まで下げれば {_pct(m.get('upside_pct'), 0)}。"
+                if m.get("target") else "下値の目標は算出できず。")
+        return {"label": label, "text":
+                f"{c.symbol} {c.expiry[5:]} {c.legs[0].strike:,.0f}P。"
+                f"IV/MAD {m['iv_ratio']:.2f} の割安。" + tail}
+    if key in ("bull_put", "bear_call"):
+        kind = "P" if key == "bull_put" else "C"
+        return {"label": label, "text":
+                f"{c.symbol} {c.legs[0].strike:,.0f}/{c.legs[1].strike:,.0f}{kind}。"
+                f"受取 {_money(m['credit'])}、最大損失 {_money(m['max_loss'])}、"
+                f"勝率目安 {m['pop']:.0f}%。"}
+    if key == "csp":
+        return {"label": label, "text":
+                f"{c.symbol} {c.legs[0].strike:,.0f}P。実質取得単価 "
+                f"{_f(m['effective_cost'])}（現値から -{abs(m['cushion_pct']):.1f}%）、"
+                f"年率 {m['annual_pct']:.1f}%。"}
+    if key == "covered_call":
+        return {"label": label, "text":
+                f"{c.symbol} {c.legs[0].strike:,.0f}C。受取 {_money(m['premium'])}、"
+                f"コールされたときの総リターン {_pct(m['called_return_pct'])}。"}
+    if key == "calendar":
+        note = "（後ろは決算またぎ）" if m.get("back_crosses_earnings") else ""
+        return {"label": label, "text":
+                f"{c.symbol} {c.legs[0].strike:,.0f}C を {c.expiry[5:]}（{c.dte}日）で売り、"
+                f"{(m.get('back_expiry') or '')[5:]}（{m['back_expiry_dte']}日）を買う。"
+                f"ネット支払 {_money(m['debit'])}、"
+                f"手前÷後ろ {m['term_ratio']:.2f}。{note}"}
+    return None
+
+
 def build_summary(buckets: Dict[str, List[uo.Candidate]], scanned: int,
                   blocked: int) -> Dict[str, Any]:
     counts = {k: len(v) for k, v in buckets.items()}
     total = sum(counts.values())
+    bull = sum(counts.get(k, 0) for k in BULLISH)
+    bear = sum(counts.get(k, 0) for k in BEARISH)
+    neutral = sum(counts.get(k, 0) for k in NEUTRAL)
 
-    bullish = counts["long_call"] + counts["bull_put"]
-    premium = counts["csp"] + counts["covered_call"]
     if total == 0:
-        headline = "今日は出せる候補がありません"
-        level = "warn"
-    elif bullish and bullish >= premium:
-        headline = "買い方向の候補が中心です"
-        level = "ok"
-    elif premium:
-        headline = "プレミアムを受け取る側の候補が中心です"
-        level = "ok"
+        headline, level = "今日は出せる候補がありません", "warn"
+    elif bull > bear * 2 and bull > neutral:
+        headline, level = "買い方向の候補が中心です", "ok"
+    elif bear > bull * 2 and bear > neutral:
+        headline, level = "売り方向の候補が中心です", "ok"
+    elif neutral >= max(bull, bear):
+        headline, level = "方向より「動かない」側の候補が中心です", "ok"
     else:
-        headline = "候補は限定的です"
-        level = "warn"
-
-    def top(key: str) -> Optional[uo.Candidate]:
-        return buckets[key][0] if buckets[key] else None
+        headline, level = "買いと売りの候補が混在しています", "ok"
 
     points = []
-    lc, bp, cs, cc = top("long_call"), top("bull_put"), top("csp"), top("covered_call")
-    if lc:
-        points.append({"label": "コール買いの一番手", "text":
-                       f"{lc.symbol} {lc.expiry[5:]} {lc.legs[0].strike:,.0f}C。"
-                       f"IV/MAD {lc.metrics['iv_ratio']:.2f} の割安。"
-                       + (f"{_f(lc.metrics['target'])} まで届けば "
-                          f"{_pct(lc.metrics.get('upside_pct'), 0)}。"
-                          if lc.metrics.get("target") else "上値の目標は算出できず。")})
-    if bp:
-        points.append({"label": "ブルプットの一番手", "text":
-                       f"{bp.symbol} {bp.legs[0].strike:,.0f}/{bp.legs[1].strike:,.0f}P。"
-                       f"受取 {_money(bp.metrics['credit'])}、最大損失 "
-                       f"{_money(bp.metrics['max_loss'])}、勝率目安 "
-                       f"{bp.metrics['pop']:.0f}%。"})
-    if cs:
-        points.append({"label": "P売りの一番手", "text":
-                       f"{cs.symbol} {cs.legs[0].strike:,.0f}P。実質取得単価 "
-                       f"{_f(cs.metrics['effective_cost'])}（現値から "
-                       f"-{abs(cs.metrics['cushion_pct']):.1f}%）、年率 "
-                       f"{cs.metrics['annual_pct']:.1f}%。"})
-    if cc:
-        points.append({"label": "カバコの一番手", "text":
-                       f"{cc.symbol} {cc.legs[0].strike:,.0f}C。受取 "
-                       f"{_money(cc.metrics['premium'])}、コールされたときの総リターン "
-                       f"{_pct(cc.metrics['called_return_pct'])}。"})
+    for key, _ in uo.SCREENS:
+        if buckets.get(key):
+            pt = _point_for(key, buckets[key][0])
+            if pt:
+                points.append(pt)
     if blocked:
         points.append({"label": "決算で除外", "text":
                        f"{blocked}銘柄。満期までに決算をまたぐ限月は、"
                        "方向もIVも読めないので最初から外している。"})
 
+    parts = " / ".join(f"{TALLY_LABELS[k]} {counts.get(k, 0)}"
+                       for k, _ in uo.SCREENS)
     return {
         "headline": headline,
         "level": level,
-        "sub": f"{scanned}銘柄を調べて、4区分で合計 {total}件。"
-               f"コール買い {counts['long_call']} / ブルプット {counts['bull_put']} / "
-               f"P売り {counts['csp']} / カバコ {counts['covered_call']}。",
+        "sub": f"{scanned}銘柄を調べて、{len(uo.SCREENS)}区分で合計 {total}件。{parts}。",
         "counts": counts,
-        "points": points[:5],
+        "tally": [{"key": k, "label": TALLY_LABELS[k], "n": counts.get(k, 0)}
+                  for k, _ in uo.SCREENS],
+        "direction": {"bull": bull, "bear": bear, "neutral": neutral},
+        "points": points,
         "disclaimer": "テクニカル指標とオプション価格の定量スクリーニングであり、"
                       "投資助言ではありません。売買判断はご自身の責任で。",
     }
@@ -356,6 +496,15 @@ FILTERS = [
     f" ＋ Δ {uo.CSP_DELTA[0]:.2f}〜{uo.CSP_DELTA[1]:.2f}",
     f"カバコ：50日線から {uo.CC_MIN_DEV_ATR:.1f}ATR以上の乖離 または MACDヒストの山越え ＋ "
     f"IV/MAD ≥ {uo.TH_IV_RICH:.2f} ＋ Δ {uo.CC_DELTA[0]:.2f}〜{uo.CC_DELTA[1]:.2f}",
+    f"プット買い：乖離 -{uo.TH_OVEREXTENDED_ATR:.0f}ATR超 ＋ MACD DC"
+    f"（{uo.TH_GC_APPROACH_ATR}ATR以内の接近を含む） ＋ IV/MAD ≤ {uo.TH_IV_CHEAP:.2f}"
+    f" ＋ Δ -{uo.PUT_DELTA[1]:.2f}〜-{uo.PUT_DELTA[0]:.2f}",
+    f"ベアコール：モメンタム {uo.TH_MOMENTUM_WEAK}以下 ＋ MACD DC ＋ "
+    f"IV/MAD ≥ {uo.TH_IV_RICH:.2f} ＋ 売るΔ {uo.BEARCALL_SHORT_DELTA[0]:.2f}〜"
+    f"{uo.BEARCALL_SHORT_DELTA[1]:.2f}",
+    f"カレンダー：乖離 {uo.CAL_MAX_DEV_ATR:.1f}ATR以内 ＋ 手前IV÷後ろIV ≥ "
+    f"{uo.CAL_MIN_TERM_RATIO:.2f} ＋ 後ろの限月は {uo.CAL_BACK_MIN_DTE}〜"
+    f"{uo.CAL_BACK_MAX_DTE}日",
 ]
 
 DEFINITIONS = [

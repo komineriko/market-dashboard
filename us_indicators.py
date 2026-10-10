@@ -129,7 +129,12 @@ class Macd:
     gc_bars_ago: Optional[int]      # 何本前に DIF が DEA を下から上抜けたか
     gc_above_zero: Optional[bool]   # その上抜けがゼロラインの上で起きたか
     gap_atr: Optional[float]        # (DIF − DEA) ÷ ATR。接近の度合い
-    dead_cross_recent: bool         # 直近20本で上から下抜けた
+    dc_bars_ago: Optional[int]      # 何本前に上から下抜けたか
+    dc_below_zero: Optional[bool]   # その下抜けがゼロラインの下で起きたか
+
+    @property
+    def dead_cross_recent(self) -> bool:
+        return self.dc_bars_ago is not None
 
 
 def macd(closes: Sequence[float], atr_value: Optional[float] = None,
@@ -147,20 +152,20 @@ def macd(closes: Sequence[float], atr_value: Optional[float] = None,
         return None
     hist = [d - s for d, s in pairs]
 
-    gc_bars_ago = None
-    gc_above_zero = None
-    dead_cross_recent = False
+    gc_bars_ago = gc_above_zero = None
+    dc_bars_ago = dc_below_zero = None
     span = min(lookback, len(pairs) - 1)
-    # 上抜けを探すのは、いま DIF が DEA の上にいるときだけ。
-    # 上抜けたあとに下抜けていれば、その上抜けはもう効いていない。
-    looking_for_gc = hist[-1] > 0
+    # 探すのは、いまの位置と同じ向きの交差だけ。上抜けたあとに下抜けていれば
+    # その上抜けはもう効いていないし、逆も同じ。
+    above = hist[-1] > 0
     for back in range(span):
         i = len(pairs) - 1 - back
-        if looking_for_gc and gc_bars_ago is None and hist[i] > 0 and hist[i - 1] <= 0:
+        if above and gc_bars_ago is None and hist[i] > 0 and hist[i - 1] <= 0:
             gc_bars_ago = back
             gc_above_zero = pairs[i][0] > 0
-        if hist[i] < 0 and hist[i - 1] >= 0 and gc_bars_ago is None:
-            dead_cross_recent = True
+        if not above and dc_bars_ago is None and hist[i] < 0 and hist[i - 1] >= 0:
+            dc_bars_ago = back
+            dc_below_zero = pairs[i][0] < 0
 
     d, s = pairs[-1]
     gap_atr = None
@@ -170,8 +175,8 @@ def macd(closes: Sequence[float], atr_value: Optional[float] = None,
         dif=d, dea=s, hist=hist[-1],
         hist_prev=hist[-2] if len(hist) >= 2 else None,
         hist_prev2=hist[-3] if len(hist) >= 3 else None,
-        gc_bars_ago=gc_bars_ago, gc_above_zero=gc_above_zero,
-        gap_atr=gap_atr, dead_cross_recent=dead_cross_recent,
+        gc_bars_ago=gc_bars_ago, gc_above_zero=gc_above_zero, gap_atr=gap_atr,
+        dc_bars_ago=dc_bars_ago, dc_below_zero=dc_below_zero,
     )
 
 

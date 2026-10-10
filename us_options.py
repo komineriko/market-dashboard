@@ -42,8 +42,15 @@ TH_IV_ABSURD = 3.0              # これを超えたら候補から外す（下�
 TH_OVEREXTENDED_ATR = 4.0       # 50日線からの乖離。これ以上は伸び切り
 CC_MIN_DEV_ATR = 1.5            # カバコを出す乖離の下限
 TH_GC_APPROACH_ATR = 0.5        # DIFがDEAの下でも、この差以内なら接近扱い
-TH_MOMENTUM_OK = 3              # モメンタム改善スコア（5点満点）
-MIN_CREDIT_RATIO = 0.20         # ブルプットのクレジット ÷ 最大損失
+TH_MOMENTUM_OK = 3              # モメンタム改善スコア（5点満点）。強気側の下限
+TH_MOMENTUM_WEAK = 1            # 弱気側の上限。これ以下なら勢いが落ちている
+MIN_CREDIT_RATIO = 0.20         # クレジットスプレッドの受取 ÷ 最大損失
+
+# --- カレンダースプレッド -----------------------------------------------
+CAL_MAX_DEV_ATR = 1.5           # これ以上トレンドが出ていると動いて負ける
+CAL_MIN_TERM_RATIO = 1.05       # 手前のIV ÷ 後ろのIV。手前が高いほど有利
+CAL_BACK_MIN_DTE = 25           # 後ろの限月
+CAL_BACK_MAX_DTE = 60
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +133,7 @@ class Underlying:
     earnings: Optional[str] = None          # 次回決算日 YYYY-MM-DD
     held: bool = False                      # 現物を持っているか
     ref_price: Optional[float] = None       # 板から逆算した現値（下の注記）
+    back_expiries: List[Expiry] = field(default_factory=list)   # カレンダーの後ろ足
 
     @property
     def spot(self) -> float:
@@ -206,6 +214,7 @@ def atm_iv(exp: Expiry, forward: float, t: float) -> Optional[float]:
 class Gex:
     call_wall: Optional[float]
     call_wall_up: Optional[float]   # 現値より上だけで見た最も厚い行使価格
+    put_wall_down: Optional[float]  # 現値より下だけで見た最も厚い行使価格
     put_wall: Optional[float]
     call_oi_peak: Optional[float]
     put_oi_peak: Optional[float]
@@ -248,7 +257,7 @@ def build_gex(expiries: Sequence[Expiry], spot: float, asof: date,
               span: float = 0.25, steps: int = 60) -> Gex:
     material = _strike_ivs(expiries, spot, asof)
     if not material:
-        return Gex(None, None, None, None, None, None, 0.0, [])
+        return Gex(None, None, None, None, None, None, None, 0.0, [])
 
     per: Dict[float, List[float]] = {}
     oi: Dict[float, List[int]] = {}
@@ -267,6 +276,8 @@ def build_gex(expiries: Sequence[Expiry], spot: float, asof: date,
     call_wall = max(by_strike, key=lambda x: x[1])[0] if by_strike else None
     above = [x for x in by_strike if x[0] > spot]
     call_wall_up = max(above, key=lambda x: x[1])[0] if above else None
+    below = [x for x in by_strike if x[0] < spot]
+    put_wall_down = min(below, key=lambda x: x[2])[0] if below else None
     put_wall = min(by_strike, key=lambda x: x[2])[0] if by_strike else None
     call_oi_peak = max(oi.items(), key=lambda kv: kv[1][0])[0] if oi else None
     put_oi_peak = max(oi.items(), key=lambda kv: kv[1][1])[0] if oi else None
@@ -287,8 +298,8 @@ def build_gex(expiries: Sequence[Expiry], spot: float, asof: date,
             break
         prev_level, prev_val = level, val
 
-    return Gex(call_wall, call_wall_up, put_wall, call_oi_peak, put_oi_peak,
-               flip, at_spot, by_strike)
+    return Gex(call_wall, call_wall_up, put_wall_down, put_wall,
+               call_oi_peak, put_oi_peak, flip, at_spot, by_strike)
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +347,50 @@ class Technicals:
                     and m.hist_prev is not None and m.hist > m.hist_prev)
 
     @property
+    def dc_state(self) -> str:
+        m = self.macd
+        if not m:
+            return "—"
+        if m.dc_bars_ago is not None:
+            zero = "ゼロ下" if m.dc_below_zero else "ゼロ上"
+            return f"DC {m.dc_bars_ago}本前・{zero}" if m.dc_bars_ago else f"DC 直近・{zero}"
+        if m.gap_atr is not None and 0 < m.gap_atr <= TH_GC_APPROACH_ATR \
+                and m.hist_prev is not None and m.hist < m.hist_prev:
+            return f"DC接近 {m.gap_atr:+.2f}"
+        return "DIF>DEA" if m.hist > 0 else "DIF<DEA"
+
+    @property
+    def dc_ok(self) -> bool:
+        """下抜け済み、または下抜け目前。gc_ok の鏡像。"""
+        m = self.macd
+        if not m:
+            return False
+        if m.dc_bars_ago is not None:
+            return True
+        return bool(m.gap_atr is not None and 0 < m.gap_atr <= TH_GC_APPROACH_ATR
+                    and m.hist_prev is not None and m.hist < m.hist_prev)
+
+    @property
+    def macd_state(self) -> str:
+        """一覧に出す1つの文字列。交差している側の説明を選ぶ。"""
+        m = self.macd
+        if not m:
+            return "—"
+        if m.gc_bars_ago is not None:
+            return self.gc_state
+        if m.dc_bars_ago is not None:
+            return self.dc_state
+        # どちらも無ければ、近づいているほうを出す
+        return self.gc_state if m.hist > 0 else self.dc_state
+
+    @property
+    def hist_bottomed(self) -> bool:
+        """MACDヒストの谷越え。下げの勢いは残るが細り始めている。"""
+        m = self.macd
+        return bool(m and m.hist < 0 and m.hist_prev is not None
+                    and m.hist > m.hist_prev)
+
+    @property
     def hist_rolled_over(self) -> bool:
         """MACDヒストの山越え。勢いは正だが細り始めている。"""
         m = self.macd
@@ -357,7 +412,11 @@ def technical_gate(tech: Technicals) -> bool:
     bull_put = tech.momentum.score >= TH_MOMENTUM_OK and tech.gc_ok
     csp = tech.momentum.score >= TH_MOMENTUM_OK
     covered = tech.hist_rolled_over or tech.dev_atr >= CC_MIN_DEV_ATR
-    return bool(long_call or bull_put or csp or covered)
+    long_put = tech.dev_atr > -TH_OVEREXTENDED_ATR and tech.dc_ok
+    bear_call = tech.momentum.score <= TH_MOMENTUM_WEAK and tech.dc_ok
+    calendar = abs(tech.dev_atr) <= CAL_MAX_DEV_ATR
+    return bool(long_call or bull_put or csp or covered
+                or long_put or bear_call or calendar)
 
 
 def reference_price(u: Underlying, asof: date) -> float:
@@ -489,7 +548,9 @@ def _value_if_spot(strike: float, t: float, iv_pct: float, is_call: bool,
 # ---------------------------------------------------------------------------
 
 CALL_DELTA = (0.35, 0.60)
+PUT_DELTA = (0.35, 0.60)                # 絶対値
 BULLPUT_SHORT_DELTA = (0.18, 0.35)      # 絶対値
+BEARCALL_SHORT_DELTA = (0.18, 0.35)
 CSP_DELTA = (0.12, 0.30)
 CC_DELTA = (0.15, 0.35)
 
@@ -741,12 +802,243 @@ def screen_covered_call(u: Underlying, asof: date, tech: Technicals,
 
 
 # ---------------------------------------------------------------------------
+# E. プット買い
+# ---------------------------------------------------------------------------
+
+def _put_target(leg: Leg, t: float, gex: Optional[Gex], spot: float
+                ) -> Dict[str, Optional[float]]:
+    """PUT WALL に届いたときの理論値。コール買いの _wall_values の鏡像。"""
+    out: Dict[str, Optional[float]] = {
+        "target": None, "at_call_wall": None, "upside_pct": None,
+        "beyond_wall": None,
+    }
+    if not gex:
+        return out
+    target = gex.put_wall
+    if target is not None and target >= spot:
+        # ウォールが現値より上にあると「下に届く」話にならない。
+        target = gex.put_wall_down
+        out["beyond_wall"] = 1.0
+    if target is not None:
+        v = _value_if_spot(leg.strike, t, leg.iv, False, target)
+        out["target"] = target
+        out["at_call_wall"] = v
+        out["upside_pct"] = (v / leg.price - 1.0) * 100.0 if leg.price else None
+    return out
+
+
+def screen_long_put(u: Underlying, asof: date, tech: Technicals,
+                    gex_for: Dict[str, Gex], per_symbol: int = 2) -> List[Candidate]:
+    """下に向かう前提。IVが割安なときだけ買う。コール買いの鏡像。
+
+    下げは速いぶんIVが上がりやすく、方向が当たればIVでも稼げる。
+    それでも入口でIVが高いと、下げても思ったほど増えない。
+    """
+    if tech.dev_atr is None or tech.dev_atr <= -TH_OVEREXTENDED_ATR:
+        return []
+    if not tech.dc_ok:
+        return []
+
+    out: List[Candidate] = []
+    for exp in usable_expiries(u, asof):
+        t, dte = exp.t(asof), exp.dte(asof)
+        f = implied_forward(exp, u.spot, asof)
+        iv = atm_iv(exp, f, t)
+        ratio = iv_ratio(iv, tech)
+        if ratio is None or ratio > TH_IV_CHEAP or not iv_is_sane(ratio):
+            continue
+        gex = gex_for.get(exp.expiry)
+        for r in exp.rows:
+            if not r.put.tradable(True):
+                continue
+            leg = _leg("買", "P", r, r.put, f, t)
+            if leg is None or not (PUT_DELTA[0] <= abs(leg.delta) <= PUT_DELTA[1]):
+                continue
+            w = _put_target(leg, t, gex, u.spot)
+            be = leg.strike - leg.price
+            out.append(Candidate(
+                strategy="long_put", symbol=u.symbol, expiry=exp.expiry, dte=dte,
+                spot=u.spot, legs=[leg], tech=tech, gex=gex,
+                metrics={
+                    "cost": leg.price * MULTIPLIER,
+                    "breakeven": be,
+                    "breakeven_pct": (be / u.spot - 1.0) * 100.0,
+                    "atm_iv": iv, "iv_ratio": ratio,
+                    **w,
+                },
+                rank=(w["upside_pct"] or -999.0),
+            ))
+    out.sort(key=lambda c: c.rank, reverse=True)
+    return out[:per_symbol]
+
+
+# ---------------------------------------------------------------------------
+# F. ベアコール・スプレッド
+# ---------------------------------------------------------------------------
+
+def screen_bear_call(u: Underlying, asof: date, tech: Technicals,
+                     gex_for: Dict[str, Gex], per_symbol: int = 1) -> List[Candidate]:
+    """上がらなければ勝ち。ブルプットの鏡像。
+
+    上に抜けたときの損失が幅で止まるので、裸のコール売りと違って
+    青天井にならない。
+    """
+    if not tech.momentum or tech.momentum.score > TH_MOMENTUM_WEAK:
+        return []
+    if not tech.dc_ok:
+        return []
+
+    out: List[Candidate] = []
+    for exp in usable_expiries(u, asof):
+        t, dte = exp.t(asof), exp.dte(asof)
+        f = implied_forward(exp, u.spot, asof)
+        iv = atm_iv(exp, f, t)
+        ratio = iv_ratio(iv, tech)
+        if ratio is None or ratio < TH_IV_RICH or not iv_is_sane(ratio):
+            continue
+        gex = gex_for.get(exp.expiry)
+        strikes = sorted(r.strike for r in exp.rows)
+        for r in exp.rows:
+            if r.strike <= u.spot or not r.call.tradable(False):
+                continue
+            short = _leg("売", "C", r, r.call, f, t)
+            if short is None:
+                continue
+            if not (BEARCALL_SHORT_DELTA[0] <= short.delta <= BEARCALL_SHORT_DELTA[1]):
+                continue
+            for k in sorted([k for k in strikes if k > r.strike])[:3]:
+                rl = exp.row(k)
+                if rl is None or not rl.call.tradable(True):
+                    continue
+                long_leg = _leg("買", "C", rl, rl.call, f, t)
+                if long_leg is None:
+                    continue
+                width = long_leg.strike - short.strike
+                credit = short.price - long_leg.price
+                max_loss = width - credit
+                if credit <= 0 or max_loss <= 0:
+                    continue
+                cr = credit / max_loss
+                if cr < MIN_CREDIT_RATIO:
+                    continue
+                be = short.strike + credit
+                out.append(Candidate(
+                    strategy="bear_call", symbol=u.symbol, expiry=exp.expiry,
+                    dte=dte, spot=u.spot, legs=[short, long_leg],
+                    tech=tech, gex=gex,
+                    metrics={
+                        "credit": credit * MULTIPLIER,
+                        "width": width,
+                        "max_loss": max_loss * MULTIPLIER,
+                        "credit_ratio": cr,
+                        "breakeven": be,
+                        "cushion_pct": (be - u.spot) / u.spot * 100.0,
+                        "pop": (1.0 - abs(short.delta)) * 100.0,
+                        "atm_iv": iv, "iv_ratio": ratio,
+                        "call_wall": gex.call_wall if gex else None,
+                    },
+                    rank=cr,
+                ))
+    out.sort(key=lambda c: c.rank, reverse=True)
+    return out[:per_symbol]
+
+
+# ---------------------------------------------------------------------------
+# G. カレンダースプレッド
+# ---------------------------------------------------------------------------
+
+def usable_back_expiries(u: Underlying, asof: date) -> List[Expiry]:
+    """カレンダーの後ろ足。決算をまたぐことは許すが、呼び出し側で印をつける。"""
+    out = [e for e in u.back_expiries
+           if CAL_BACK_MIN_DTE <= e.dte(asof) <= CAL_BACK_MAX_DTE]
+    return sorted(out, key=lambda e: e.dte(asof))
+
+
+def screen_calendar(u: Underlying, asof: date, tech: Technicals,
+                    gex_for: Dict[str, Gex], per_symbol: int = 1) -> List[Candidate]:
+    """手前を売って後ろを買う。動かなければ勝ち。
+
+    手前のほうが1日あたりの時間価値の減りが速いので、株価がその場に
+    留まるほど得をする。手前のIVが後ろより高いとき（順ザヤ）がいちばん有利。
+    トレンドが出ている銘柄は株価が離れていって負けるので外す。
+
+    手前の限月は決算をまたがない。短いほうを売っている間に窓を開けられると
+    一番痛い。後ろの限月は決算をまたいでも構わないが、そのときは印をつける
+    （イベント分のプレミアムを買っていることになるので、意味が変わる）。
+    """
+    if tech.dev_atr is None or abs(tech.dev_atr) > CAL_MAX_DEV_ATR:
+        return []
+
+    backs = usable_back_expiries(u, asof)
+    if not backs:
+        return []
+
+    out: List[Candidate] = []
+    for front in usable_expiries(u, asof):
+        tf, dte = front.t(asof), front.dte(asof)
+        ff = implied_forward(front, u.spot, asof)
+        iv_f = atm_iv(front, ff, tf)
+        if iv_f is None or not iv_is_sane(iv_ratio(iv_f, tech)):
+            continue
+        for back in backs:
+            if back.dte(asof) <= dte:
+                continue
+            tb = back.t(asof)
+            fb = implied_forward(back, u.spot, asof)
+            iv_b = atm_iv(back, fb, tb)
+            if not iv_b:
+                continue
+            term = iv_f / iv_b
+            if term < CAL_MIN_TERM_RATIO:
+                continue
+            # 行使価格は現値にいちばん近いところ。両方の限月にあるものだけ。
+            cands = sorted((r.strike for r in front.rows), key=lambda k: abs(k - u.spot))
+            for k in cands[:3]:
+                rf, rb = front.row(k), back.row(k)
+                if rf is None or rb is None:
+                    continue
+                if not rf.call.tradable(False) or not rb.call.tradable(True):
+                    continue
+                sell = _leg("売", "C", rf, rf.call, ff, tf)
+                buy = _leg("買", "C", rb, rb.call, fb, tb)
+                if sell is None or buy is None:
+                    continue
+                debit = buy.price - sell.price
+                if debit <= 0:
+                    continue
+                crosses = _crosses_earnings(u, asof, back.expiry)
+                out.append(Candidate(
+                    strategy="calendar", symbol=u.symbol, expiry=front.expiry,
+                    dte=dte, spot=u.spot, legs=[sell, buy], tech=tech,
+                    gex=gex_for.get(front.expiry),
+                    metrics={
+                        "back_expiry": back.expiry,
+                        "back_expiry_dte": back.dte(asof),
+                        "debit": debit * MULTIPLIER,
+                        "term_ratio": term,
+                        "iv_front": iv_f, "iv_back": iv_b,
+                        "distance_pct": (k / u.spot - 1.0) * 100.0,
+                        "back_crosses_earnings": crosses,
+                        "atm_iv": iv_f,
+                        "iv_ratio": iv_ratio(iv_f, tech),
+                    },
+                    notes=(["後ろの限月は決算をまたぐ"] if crosses else []),
+                    rank=term,
+                ))
+    out.sort(key=lambda c: c.rank, reverse=True)
+    return out[:per_symbol]
+
+
+# ---------------------------------------------------------------------------
 
 SCREENS = (
     ("long_call", screen_long_call),
     ("bull_put", screen_bull_put),
     ("csp", screen_cash_secured_put),
     ("covered_call", screen_covered_call),
+    ("long_put", screen_long_put),
+    ("bear_call", screen_bear_call),
+    ("calendar", screen_calendar),
 )
 
 

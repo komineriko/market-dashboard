@@ -102,9 +102,10 @@ def main() -> int:
 
     report = ur.build_report(unders, asof, rep, holdings)
     counts = report["summary"]["counts"]
-    print(f"基準日 {asof} / 調査 {len(unders)}銘柄 / "
-          f"コール買い {counts['long_call']} ブルプット {counts['bull_put']} "
-          f"P売り {counts['csp']} カバコ {counts['covered_call']}")
+    import us_report as _ur
+    parts = " ".join(f"{_ur.TALLY_LABELS[k]} {counts.get(k, 0)}"
+                     for k, _ in uo.SCREENS)
+    print(f"基準日 {asof} / 調査 {len(unders)}銘柄 / {parts}")
 
     if args.dry_run:
         print(json.dumps(report, ensure_ascii=False, indent=1)[:4000])
