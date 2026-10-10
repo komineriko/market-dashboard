@@ -55,8 +55,15 @@ class TestQuote(unittest.TestCase):
     def test_mid_prefers_the_two_sided_quote(self):
         self.assertAlmostEqual(q(1.00, 1.10).mid, 1.05)
 
-    def test_mid_falls_back_to_last_when_one_side_is_missing(self):
-        self.assertEqual(uo.Quote(bid=None, ask=None, last=2.0).mid, 2.0)
+    def test_last_alone_is_not_a_price(self):
+        """建玉ゼロの行使価格に残る古い約定値を現在値として読まないこと。
+
+        実データで V の 385P が bid/ask 無しの last=12.7（実勢7程度）、
+        T・VZ・TMUS では ATM IV が 170〜230% と出た。
+        """
+        self.assertIsNone(uo.Quote(bid=None, ask=None, last=2.0).mid)
+        self.assertIsNone(uo.Quote(bid=None, ask=None, last=2.0, oi=5000).mid)
+        self.assertFalse(uo.Quote(bid=None, ask=None, last=2.0, oi=5000).tradable(True))
 
     def test_no_price_at_all_is_none(self):
         self.assertIsNone(uo.Quote().mid)
@@ -788,3 +795,52 @@ class TestShortlist(unittest.TestCase):
         bars = [ui.Bar(f"d{i}", 10, 10, 10.0, 100.0) for i in range(20)]
         bars[-1] = ui.Bar("spike", 10, 10, 10.0, 10_000_000.0)
         self.assertAlmostEqual(uf.dollar_volume(bars), 1000.0)
+
+
+class TestStaleLastPrices(unittest.TestCase):
+    """建玉ゼロの行使価格に残る古い約定値でIVが壊れないこと。
+
+    数字は 2026-10-09 の実データから取っている。V（現値385前後）の
+    権利行使385のプットは bid/ask が無く last=12.70 だけが残っていた。
+    実勢は7程度なので、これを現在値として読むとIVが倍近くに出る。
+    """
+
+    def _chain_with_one_stale_strike(self):
+        exp = flat_chain(385.0, 14, 0.21, step=2.5, oi=3000)
+        row = exp.row(385.0)
+        self.assertIsNotNone(row)
+        row.put = uo.Quote(bid=None, ask=None, last=12.70, volume=0, oi=0)
+        return exp
+
+    def test_atm_iv_ignores_the_stale_strike(self):
+        clean = flat_chain(385.0, 14, 0.21, step=2.5, oi=3000)
+        stale = self._chain_with_one_stale_strike()
+        f = uo.implied_forward(clean, 385.0, ASOF)
+        a = uo.atm_iv(clean, f, clean.t(ASOF))
+        b = uo.atm_iv(stale, uo.implied_forward(stale, 385.0, ASOF),
+                      stale.t(ASOF))
+        self.assertAlmostEqual(a, 21.0, delta=1.5)
+        self.assertAlmostEqual(b, a, delta=1.0,
+                               msg="古い約定値がATM IVを動かしている")
+
+    def test_stale_strike_does_not_reach_the_forward(self):
+        stale = self._chain_with_one_stale_strike()
+        self.assertAlmostEqual(uo.implied_forward(stale, 385.0, ASOF), 385.0,
+                               delta=1.0)
+
+    def test_stale_strike_contributes_no_gamma(self):
+        """GEXの材料にも入らないこと。古い値段からのガンマは実勢ではない。"""
+        stale = self._chain_with_one_stale_strike()
+        material = uo._strike_ivs([stale], 385.0, ASOF)
+        self.assertFalse([m for m in material
+                          if abs(m[0] - 385.0) < 1e-6 and m[3] is False],
+                         "気配の無い行使価格がGEXに入っている")
+
+    def test_very_wide_quotes_are_left_out_of_the_iv_sample(self):
+        """仲値が当てにならないほど広い気配は基準値に使わない。"""
+        exp = flat_chain(100.0, 10, 0.30, step=2.5, oi=3000)
+        row = exp.row(100.0)
+        row.call = uo.Quote(bid=0.10, ask=9.00, last=1.0, volume=1, oi=3000)
+        f = uo.implied_forward(exp, 100.0, ASOF)
+        iv = uo.atm_iv(exp, f, exp.t(ASOF))
+        self.assertAlmostEqual(iv, 30.0, delta=2.0)

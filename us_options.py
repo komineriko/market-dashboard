@@ -28,6 +28,7 @@ TRADING_DAYS = 252
 MIN_OI = 200                    # 建玉。これ未満は気配が形だけのことが多い
 MIN_PRICE = 0.10                # 20セント未満は手数料負けしやすい
 MAX_SPREAD_PCT = 10.0           # (ask-bid)/mid。これより広いと往復で負ける
+IV_SAMPLE_MAX_SPREAD_PCT = 60.0 # IVの基準値を取るときに許す広さ（売買はしない）
 MIN_UNDERLYING = 10.0
 
 # --- 期間 -------------------------------------------------------------------
@@ -59,9 +60,16 @@ class Quote:
 
     @property
     def mid(self) -> Optional[float]:
+        """気配の仲値。両側が立っていないときは値を作らない。
+
+        last に落とすと、建玉ゼロの行使価格に残っている何日も前の約定値を
+        現在値として読んでしまう。実データで、V の 385P が bid/ask 無しの
+        last=12.7（実勢は7程度）、T・VZ・TMUS では ATM IV が 170〜230% と
+        出た。値段の安い銘柄ほど古い約定値のずれがIVに増幅されて効く。
+        """
         if self.bid is not None and self.ask is not None and self.ask >= self.bid > 0:
             return (self.bid + self.ask) / 2.0
-        return self.last if self.last and self.last > 0 else None
+        return None
 
     @property
     def spread_pct(self) -> Optional[float]:
@@ -174,6 +182,11 @@ def atm_iv(exp: Expiry, forward: float, t: float) -> Optional[float]:
     vals: List[float] = []
     for r in sorted(exp.rows, key=lambda r: abs(r.strike - forward))[:4]:
         for q, is_call in ((r.call, True), (r.put, False)):
+            sp = q.spread_pct
+            # 売買はしないので足切りは緩くてよいが、極端に広い気配は
+            # 仲値そのものが当てにならないので基準値には使わない。
+            if sp is None or sp > IV_SAMPLE_MAX_SPREAD_PCT:
+                continue
             v = iv_of(q, forward, r.strike, t, is_call)
             if v and 0.01 < v < 4.0:
                 vals.append(v)

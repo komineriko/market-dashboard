@@ -10,9 +10,6 @@ on:
     # 1営業日ずれる。12時間以上あけて両方そろってから回す。
     # 18:00 JST は米国の寄り付きの数時間前なので、見る側にも都合がよい。
     - cron: "0 9 * * 2-6"
-  push:
-    # 一時的。IVが極端に出る原因を実データで見たら外す。
-    branches: [claude/daily-report-creation-0i8c9c]
   workflow_dispatch:
     inputs:
       limit:
@@ -53,12 +50,7 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests
 
-      - name: Probe IV outliers
-        if: github.event_name == 'push'
-        run: python tools/probe_us_iv.py
-
       - name: Build report
-        if: github.event_name != 'push'
         run: |
           ARGS=""
           if [ -n "${{ github.event.inputs.limit }}" ]; then
@@ -81,7 +73,6 @@ jobs:
           retention-days: 3
 
       - name: Commit and push if changed
-        if: github.event_name != 'push'
         run: |
           if [ -z "$(git status --porcelain us_options.html)" ]; then
             echo "変更なし。"
