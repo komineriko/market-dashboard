@@ -197,8 +197,26 @@ def _earnings_from_yf(symbol: str, today: date) -> Optional[str]:
 
 
 def _as_date(x) -> Optional[date]:
+    """pandas の Timestamp・datetime・date・文字列のどれでも date にする。
+
+    Timestamp は datetime の、datetime は date のサブクラスなので
+    isinstance(x, date) だけで通すと Timestamp がそのまま返り、
+    あとで date と比較したときに pandas が例外を投げる（実際に踏んだ）。
+    """
     if x is None:
         return None
+    try:
+        if x != x:                           # NaT / NaN は自分と等しくない
+            return None
+    except (TypeError, ValueError):
+        pass
+    if hasattr(x, "to_pydatetime"):          # pandas Timestamp
+        try:
+            x = x.to_pydatetime()
+        except (ValueError, TypeError):
+            return None
+    if isinstance(x, datetime):
+        return x.date()
     if isinstance(x, date):
         return x
     try:

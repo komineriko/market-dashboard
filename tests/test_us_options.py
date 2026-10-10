@@ -499,3 +499,37 @@ HERE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDateCoercion(unittest.TestCase):
+    """決算日の型をそろえる。
+
+    pandas の Timestamp は datetime の、datetime は date のサブクラス。
+    isinstance(x, date) だけで通すと Timestamp がそのまま残り、
+    date と比較した時点で pandas が例外を投げる（実データで踏んだ）。
+    """
+
+    def test_plain_types(self):
+        from datetime import datetime as dt
+        self.assertEqual(uf._as_date(date(2026, 11, 18)), date(2026, 11, 18))
+        self.assertEqual(uf._as_date(dt(2026, 11, 18, 21, 0)), date(2026, 11, 18))
+        self.assertEqual(uf._as_date("2026-11-18"), date(2026, 11, 18))
+        self.assertEqual(uf._as_date("2026-11-18 21:00:00"), date(2026, 11, 18))
+        self.assertIsNone(uf._as_date(None))
+        self.assertIsNone(uf._as_date("まだ未定"))
+
+    def test_result_can_be_compared_with_a_date(self):
+        for raw in (date(2026, 11, 18), "2026-11-18"):
+            self.assertGreater(uf._as_date(raw), date(2026, 1, 1))
+
+    def test_pandas_timestamp(self):
+        try:
+            import pandas as pd
+        except ImportError:
+            self.skipTest("pandas が無い")
+        ts = pd.Timestamp("2026-11-18 21:00:00")
+        got = uf._as_date(ts)
+        self.assertEqual(got, date(2026, 11, 18))
+        self.assertNotIsInstance(got, pd.Timestamp)
+        self.assertGreater(got, date(2026, 1, 1))     # ここで例外が出ないこと
+        self.assertIsNone(uf._as_date(pd.NaT))
