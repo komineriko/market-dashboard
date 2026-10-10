@@ -94,6 +94,35 @@ python -m unittest discover -s tests     # テスト
 残る差は捕捉窓の広さと、突き合わせ先がナイトセッションのスナップショットを
 使っていることによる（本実装は清算値段ベース）。
 
+### 銘柄リスト
+
+`us_universe.txt` を置くと、そこに載っている銘柄だけを対象にする。無ければ
+`us_fetch.UNIVERSE` の組み込み一覧（63銘柄）を使う。
+
+受け付ける形式:
+
+```
+###マグニフィセント7,NVDA,AAPL,GOOGL,###40. 金融,BRK.B,JPM
+```
+
+```
+NASDAQ:AAPL
+NYSE:BRK.B
+# 行頭の # は見出し・コメントとして無視
+```
+
+`###`で始まる見出しと空白は落とし、`BRK.B` は `BRK-B` に直し、米国以外の
+取引所（`TSE:` など）は除外し、重複は最初の1つだけ残す。
+
+数百銘柄のリストでも回るよう、取得は2段階にしてある。
+
+1. 日足はまとめて取る（20銘柄ずつ）
+2. テクニカルの条件をどれか1つでも満たす銘柄に絞る
+3. 残った銘柄だけ決算と板を取りに行く（上限 `US_MAX_CHAINS`、既定120）
+
+上限を超えた分は売買代金の小さい順に見送る。オプションの建玉も売買代金の
+大きい銘柄に寄るので、取りこぼしは少ない。絞り込みの結果はページに出す。
+
 ### データの所在（実地調査の結果）
 
 JPXの公表データは置き場所が分かりにくいので、調べた結果を残しておく。
@@ -223,7 +252,9 @@ IVは板のMIDから自前で逆算する（r=0、フォワードはプット・
 ```bash
 python update_us_options.py                      # 取得して更新
 python update_us_options.py --demo               # 合成データ（通信しない）
-python update_us_options.py --limit 10           # 先頭10銘柄だけ
+python update_us_options.py --limit 10           # リストの先頭10銘柄だけ
+python update_us_options.py --universe mylist.txt        # 別の銘柄リストで
+python update_us_options.py --max-chains 40      # 板を取る銘柄数の上限
 python update_us_options.py --snapshot board.json        # 板を保存
 python update_us_options.py --from-snapshot board.json   # 保存した板で組み直す
 ```

@@ -39,6 +39,7 @@ TH_IV_CHEAP = 0.85              # IV ÷ MADボラ。これ以下で「買い有�
 TH_IV_RICH = 1.00               # これ以上で「売り有利」
 TH_IV_ABSURD = 3.0              # これを超えたら候補から外す（下の注記）
 TH_OVEREXTENDED_ATR = 4.0       # 50日線からの乖離。これ以上は伸び切り
+CC_MIN_DEV_ATR = 1.5            # カバコを出す乖離の下限
 TH_GC_APPROACH_ATR = 0.5        # DIFがDEAの下でも、この差以内なら接近扱い
 TH_MOMENTUM_OK = 3              # モメンタム改善スコア（5点満点）
 MIN_CREDIT_RATIO = 0.20         # ブルプットのクレジット ÷ 最大損失
@@ -326,6 +327,24 @@ class Technicals:
         """MACDヒストの山越え。勢いは正だが細り始めている。"""
         m = self.macd
         return bool(m and m.hist > 0 and m.hist_prev is not None and m.hist < m.hist_prev)
+
+
+def technical_gate(tech: Technicals) -> bool:
+    """板を取りに行く価値があるか。
+
+    4区分のうち、テクニカルだけで判定できる条件の論理和。どれも通らない銘柄は
+    板を取っても候補にならないので、取得前にここで落とす。銘柄リストが
+    数百本になると、板と決算の取得が全体の時間のほとんどを占めるため。
+
+    IVの条件（IV/MAD）は板が無いと判定できないので、ここには入れない。
+    """
+    if tech.dev_atr is None or tech.momentum is None:
+        return False
+    long_call = tech.dev_atr < TH_OVEREXTENDED_ATR and tech.gc_ok
+    bull_put = tech.momentum.score >= TH_MOMENTUM_OK and tech.gc_ok
+    csp = tech.momentum.score >= TH_MOMENTUM_OK
+    covered = tech.hist_rolled_over or tech.dev_atr >= CC_MIN_DEV_ATR
+    return bool(long_call or bull_put or csp or covered)
 
 
 def reference_price(u: Underlying, asof: date) -> float:
@@ -668,7 +687,8 @@ def screen_covered_call(u: Underlying, asof: date, tech: Technicals,
     伸び切ったところか勢いが細り始めたところで売る。上に抜けたら株は持って
     いかれるので、「その値段で売ってもいいか」が条件になる。
     """
-    if not (tech.hist_rolled_over or (tech.dev_atr is not None and tech.dev_atr >= 1.5)):
+    if not (tech.hist_rolled_over
+            or (tech.dev_atr is not None and tech.dev_atr >= CC_MIN_DEV_ATR)):
         return []
 
     out: List[Candidate] = []

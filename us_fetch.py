@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -25,6 +26,8 @@ import us_options as uo
 
 REQUEST_SLEEP = float(os.environ.get("US_REQUEST_SLEEP", "0.15"))
 CHAIN_SLEEP = float(os.environ.get("US_CHAIN_SLEEP", "0.25"))
+# 板と決算を取りに行く銘柄数の上限。リストが数百本でも時間内に終わらせる。
+MAX_CHAINS = int(os.environ.get("US_MAX_CHAINS", "120"))
 
 
 def log(msg: str) -> None:
@@ -81,6 +84,68 @@ UNIVERSE: Tuple[str, ...] = (
     "TQQQ", "GLD", "SLV", "USO", "TLT", "EEM", "EWJ", "HYG", "ARKK",
 )
 
+UNIVERSE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "us_universe.txt")
+
+# 取引所の接頭辞つきで書かれていることがある（TradingViewの書き出し形式）。
+# 米国の取引所だけ採る。オプションが無い市場を混ぜても取得で落ちるだけ。
+US_EXCHANGES = frozenset(("NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "CBOE"))
+
+_TICKER_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
+
+
+def normalize_ticker(sym: str) -> str:
+    """BRK.B のようなクラス株を yfinance の表記（BRK-B）に直す。"""
+    return sym.strip().upper().replace(".", "-")
+
+
+def parse_universe_text(text: str) -> List[str]:
+    """銘柄リストの本文から銘柄コードを取り出す。
+
+    想定する形:
+      * カンマ区切り（TradingViewの書き出し。###セクション名 が混ざる）
+      * 1行1銘柄
+      * NASDAQ:AAPL のような取引所つき
+    見出しや空白は落とし、重複は最初の1つだけ残す。
+    """
+    out: List[str] = []
+    seen = set()
+    for raw in re.split(r"[,\n\r\t;]+", text):
+        tok = raw.replace("\\", "").strip().strip('"').strip("'").strip()
+        if not tok or tok.startswith("#"):
+            continue
+        if ":" in tok:
+            ex, _, rest = tok.partition(":")
+            if ex.strip().upper() not in US_EXCHANGES:
+                continue
+            tok = rest
+        tok = normalize_ticker(tok)
+        if not _TICKER_RE.match(tok) or tok in seen:
+            continue
+        seen.add(tok)
+        out.append(tok)
+    return out
+
+
+def load_universe_symbols(path: str = None) -> Tuple[List[str], Optional[str]]:
+    """ユニバース。ファイルがあればそこから、無ければ組み込みの一覧から。
+
+    返り値の2つめは出どころの説明（レポートに出す）。
+    """
+    path = path or UNIVERSE_PATH
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                syms = parse_universe_text(f.read())
+        except OSError as e:
+            log(f"WARN: 銘柄リストを読めませんでした: {e}")
+            syms = []
+        if syms:
+            return syms, f"{os.path.basename(path)}（{len(syms)}銘柄）"
+        log("WARN: 銘柄リストから銘柄を取り出せませんでした。組み込みの一覧を使います。")
+    return list(UNIVERSE), f"組み込みの一覧（{len(UNIVERSE)}銘柄）"
+
+
 HOLDINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "us_holdings.json")
 
@@ -129,7 +194,7 @@ def _rows_for(df, symbol: str, multi: bool) -> List[ui.Bar]:
         h, l, c = _num(row.get("High")), _num(row.get("Low")), _num(row.get("Close"))
         if h is None or l is None or c is None:
             continue
-        out.append(ui.Bar(str(idx)[:10], h, l, c))
+        out.append(ui.Bar(str(idx)[:10], h, l, c, _num(row.get("Volume"), 0.0) or 0.0))
     out.sort(key=lambda b: b.date)
     return out
 
@@ -350,6 +415,10 @@ class FetchReport:
     earnings_unknown: List[str] = None
     earnings_available: bool = True
     bars_lag_days: int = 0          # 板より日足が何営業日ぶん古いか
+    universe_size: int = 0          # リストに載っていた銘柄数
+    universe_source: str = ""
+    shortlisted: int = 0            # テクニカルを通った銘柄数
+    capped: int = 0                 # 上限で見送った銘柄数
 
     def __post_init__(self):
         for f in ("ok", "no_bars", "no_chain", "earnings_blocked",
@@ -358,35 +427,82 @@ class FetchReport:
                 setattr(self, f, [])
 
 
-def load_universe(symbols: Sequence[str] = UNIVERSE,
+def dollar_volume(bars: Sequence[ui.Bar], n: int = 20) -> float:
+    """直近 n 日の売買代金の中央値。オプションの流動性の代理に使う。"""
+    vals = sorted(b.close * b.volume for b in bars[-n:])
+    if not vals:
+        return 0.0
+    mid = len(vals) // 2
+    return vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2.0
+
+
+def shortlist(bars_map: Dict[str, List[ui.Bar]], symbols: Sequence[str],
+              cap: int = None) -> Tuple[List[str], int]:
+    """板を取りに行く銘柄を選ぶ。
+
+    テクニカルだけで判定できる条件を通らない銘柄は、板を取っても候補に
+    ならないので先に落とす。それでも上限を超える場合は売買代金の大きい順。
+    オプションの建玉も厚いほうに寄るので、取りこぼしが少ない。
+    """
+    cap = MAX_CHAINS if cap is None else cap
+    passed: List[Tuple[float, str]] = []
+    for sym in symbols:
+        bars = bars_map.get(sym) or []
+        if len(bars) < 60 or bars[-1].close < uo.MIN_UNDERLYING:
+            continue
+        u = uo.Underlying(symbol=sym, bars=bars, expiries=[])
+        if not uo.technical_gate(uo.technicals(u)):
+            continue
+        passed.append((dollar_volume(bars), sym))
+    passed.sort(reverse=True)
+    kept = [sym for _, sym in passed[:cap]]
+    return kept, max(0, len(passed) - len(kept))
+
+
+def load_universe(symbols: Sequence[str] = None,
                   asof: Optional[date] = None,
                   holdings: Optional[List[str]] = None,
+                  cap: int = None,
                   ) -> Tuple[List[uo.Underlying], FetchReport]:
+    """日足 → テクニカルで絞り込み → 決算 → 板、の順に取る。
+
+    決算と板は銘柄ごとのリクエストになるので、数百本のリストをそのまま
+    回すと数千リクエストになる。先にテクニカルで落としてから取りに行く。
+    """
     rep = FetchReport()
+    if symbols is None:
+        symbols, source = load_universe_symbols()
+        rep.universe_source = source
+    else:
+        symbols = list(symbols)
+        rep.universe_source = f"指定の一覧（{len(symbols)}銘柄）"
+    rep.universe_size = len(symbols)
     held_set = set(holdings) if holdings is not None else None
 
     bars_map = fetch_bars_many(symbols)
-    usable = [s for s in symbols if len(bars_map.get(s, [])) >= 60]
-    rep.no_bars = [s for s in symbols if s not in usable]
+    rep.no_bars = [s for s in symbols if len(bars_map.get(s, [])) < 60]
+
+    kept, capped = shortlist(bars_map, symbols, cap)
+    rep.shortlisted = len(kept)
+    rep.capped = capped
+    log(f"銘柄 {len(symbols)} → 日足あり {len(symbols) - len(rep.no_bars)} "
+        f"→ テクニカル通過 {len(kept) + capped} → 板を取る {len(kept)}")
+    if not kept:
+        return [], rep
 
     # ETFには決算が無い。常に「不明」になるので、決算で外す対象から除く。
-    earnings, unknown = fetch_earnings_map([s for s in usable if s not in ETF_SYMBOLS])
+    earnings, unknown = fetch_earnings_map([s for s in kept if s not in ETF_SYMBOLS])
     rep.earnings_available = bool(earnings)
     rep.earnings_unknown = unknown
 
     board_date = asof or board_date_from_clock()
     rep.asof = board_date
-    # 日足が板より古いかを記録する。古いままテクニカルを出すこと自体は
-    # 構わないが、黙ってやると「いつの数字か」が分からなくなる。
     newest_bar = max((b[-1].date for b in bars_map.values() if b), default=None)
     if newest_bar and newest_bar < board_date.isoformat():
         rep.bars_lag_days = (board_date - date.fromisoformat(newest_bar)).days
 
     out: List[uo.Underlying] = []
-    for sym in usable:
-        bars = bars_map[sym]
-        if bars[-1].close < uo.MIN_UNDERLYING:
-            continue
+    for sym in kept:
         if sym in unknown:
             # 決算日が分からない銘柄は、またぐかどうかを判定できないので外す。
             continue
@@ -395,7 +511,7 @@ def load_universe(symbols: Sequence[str] = UNIVERSE,
             rep.no_chain.append(sym)
             continue
         u = uo.Underlying(
-            symbol=sym, bars=bars, expiries=exps,
+            symbol=sym, bars=bars_map[sym], expiries=exps,
             earnings=earnings.get(sym),
             held=True if held_set is None else (sym in held_set),
         )

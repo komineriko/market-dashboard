@@ -58,7 +58,10 @@ def main() -> int:
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--date", help="基準日 YYYY-MM-DD。既定は板の日付")
-    ap.add_argument("--limit", type=int, help="ユニバースの先頭N銘柄だけ")
+    ap.add_argument("--limit", type=int, help="リストの先頭N銘柄だけ")
+    ap.add_argument("--universe", help="銘柄リストのファイル。既定は us_universe.txt")
+    ap.add_argument("--max-chains", type=int,
+                    help=f"板を取りに行く銘柄数の上限（既定 {uf.MAX_CHAINS}）")
     ap.add_argument("--snapshot", help="取得した板をこのファイルに保存")
     ap.add_argument("--from-snapshot", help="保存した板から組み直す")
     args = ap.parse_args()
@@ -79,8 +82,11 @@ def main() -> int:
         asof = asof or date.fromisoformat(snap["asof"])
         rep = uf.FetchReport(asof=asof, ok=[u.symbol for u in unders])
     else:
-        syms = uf.UNIVERSE[:args.limit] if args.limit else uf.UNIVERSE
-        unders, rep = uf.load_universe(syms, asof=asof, holdings=holdings)
+        syms, _src = uf.load_universe_symbols(args.universe)
+        if args.limit:
+            syms = syms[:args.limit]
+        unders, rep = uf.load_universe(syms, asof=asof, holdings=holdings,
+                                       cap=args.max_chains)
         asof = asof or rep.asof
         if not unders:
             print("板を1銘柄も取得できませんでした。", file=sys.stderr)

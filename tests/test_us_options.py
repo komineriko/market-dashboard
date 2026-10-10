@@ -659,3 +659,130 @@ class TestSectionTrim(unittest.TestCase):
     def test_limit_is_respected(self):
         cands = [self._c(f"S{i}", i) for i in range(20)]
         self.assertEqual(len(ur._trim(cands, 8)), 8)
+
+
+class TestUniverseParsing(unittest.TestCase):
+    """銘柄リストの読み込み。
+
+    手元のリストは TradingView の書き出し形式（カンマ区切り＋###見出し）
+    だったり1行1銘柄だったりするので、両方を受ける。
+    """
+
+    def test_tradingview_export_with_section_headers(self):
+        raw = (r"\#\#\#マグニフィセント7,NVDA,AAPL,GOOGL,"
+               r"\#\#\#40. 金融,BRK.B,JPM,"
+               r"\#\#\#45. 情報技術,AVGO,MU")
+        self.assertEqual(uf.parse_universe_text(raw),
+                         ["NVDA", "AAPL", "GOOGL", "BRK-B", "JPM", "AVGO", "MU"])
+
+    def test_class_shares_are_normalised_for_the_data_source(self):
+        self.assertEqual(uf.normalize_ticker("BRK.B"), "BRK-B")
+        self.assertEqual(uf.normalize_ticker(" brk.b "), "BRK-B")
+
+    def test_exchange_prefixes_are_stripped_and_non_us_dropped(self):
+        raw = "NASDAQ:AAPL,NYSE:BRK.B,TSE:1678,IDX:COMPOSITE,AMEX:ARKK,MIL:MONC"
+        self.assertEqual(uf.parse_universe_text(raw), ["AAPL", "BRK-B", "ARKK"])
+
+    def test_one_per_line_with_comments(self):
+        self.assertEqual(uf.parse_universe_text("AAPL\nMSFT\n\n# メモ\nNVDA\n"),
+                         ["AAPL", "MSFT", "NVDA"])
+
+    def test_duplicates_keep_the_first(self):
+        self.assertEqual(uf.parse_universe_text("AAPL,MSFT,AAPL"),
+                         ["AAPL", "MSFT"])
+
+    def test_junk_is_ignored(self):
+        self.assertEqual(uf.parse_universe_text("AAPL,,  ,日本語,123456789012,MSFT"),
+                         ["AAPL", "MSFT"])
+
+    def test_file_is_used_when_present(self):
+        fd = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         encoding="utf-8")
+        fd.write("AAPL,MSFT,NVDA")
+        fd.close()
+        try:
+            syms, src = uf.load_universe_symbols(fd.name)
+            self.assertEqual(syms, ["AAPL", "MSFT", "NVDA"])
+            self.assertIn("3銘柄", src)
+        finally:
+            os.unlink(fd.name)
+
+    def test_falls_back_to_the_builtin_list(self):
+        missing = os.path.join(tempfile.gettempdir(), "no_such_universe.txt")
+        syms, src = uf.load_universe_symbols(missing)
+        self.assertEqual(syms, list(uf.UNIVERSE))
+        self.assertIn("組み込み", src)
+
+    def test_empty_file_falls_back(self):
+        fd = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         encoding="utf-8")
+        fd.write("\n# 見出しだけ\n")
+        fd.close()
+        try:
+            syms, src = uf.load_universe_symbols(fd.name)
+            self.assertEqual(syms, list(uf.UNIVERSE))
+            self.assertIn("組み込み", src)
+        finally:
+            os.unlink(fd.name)
+
+
+class TestShortlist(unittest.TestCase):
+    """板を取りに行く前の絞り込み。
+
+    リストが数百本になると、板と決算の取得が全体の時間をほとんど占める。
+    テクニカルで落とせる銘柄は先に落とす。
+    """
+
+    def _bars(self, seed, n=160, vol_mult=1.0, trend=0.0015):
+        import random
+        rng = random.Random(seed)
+        closes = [100.0]
+        for _ in range(n - 1):
+            closes.append(closes[-1] * (1 + rng.gauss(trend, 0.013)))
+        return [ui.Bar(f"d{i}", c * 1.012, c * 0.988, c, 1_000_000 * vol_mult)
+                for i, c in enumerate(closes)]
+
+    def test_gate_rejection_means_no_candidates(self):
+        """ゲートで落とした銘柄が、実は候補になりえた…が起きないこと。"""
+        checked = 0
+        for seed in range(40):
+            bars = self._bars(seed, trend=0.0)
+            u = uo.Underlying(symbol=f"S{seed}", bars=bars,
+                              expiries=[flat_chain(bars[-1].close, 10, 0.5,
+                                                   step=2.5, oi=5000)])
+            if uo.technical_gate(uo.technicals(u)):
+                continue
+            checked += 1
+            _, found = uo.screen_symbol(u, ASOF)
+            self.assertEqual(sum(len(v) for v in found.values()), 0,
+                             f"S{seed} はゲートで落としたのに候補が出た")
+        self.assertGreater(checked, 0, "ゲートで落ちる銘柄が1つも無く、検証できていない")
+
+    def test_short_history_is_dropped(self):
+        bars_map = {"AAA": self._bars(1)[:30]}
+        kept, _ = uf.shortlist(bars_map, ["AAA"])
+        self.assertEqual(kept, [])
+
+    def test_penny_stock_is_dropped(self):
+        bars = [ui.Bar(f"d{i}", 2.0, 1.8, 1.9, 1e6) for i in range(160)]
+        kept, _ = uf.shortlist({"AAA": bars}, ["AAA"])
+        self.assertEqual(kept, [])
+
+    def test_cap_keeps_the_most_traded(self):
+        bars_map = {
+            "BIG": self._bars(2, vol_mult=100.0),
+            "MID": self._bars(2, vol_mult=10.0),
+            "SMALL": self._bars(2, vol_mult=1.0),
+        }
+        syms = ["SMALL", "MID", "BIG"]
+        # まず3本とも条件を通ることを確かめる（通らないとこのテストが無意味）
+        all_kept, _ = uf.shortlist(bars_map, syms, cap=10)
+        self.assertEqual(sorted(all_kept), ["BIG", "MID", "SMALL"])
+        kept, capped = uf.shortlist(bars_map, syms, cap=2)
+        self.assertEqual(kept, ["BIG", "MID"])
+        self.assertEqual(capped, 1)
+
+    def test_dollar_volume_uses_the_median(self):
+        bars = [ui.Bar(f"d{i}", 10, 10, 10.0, 100.0) for i in range(20)]
+        bars[-1] = ui.Bar("spike", 10, 10, 10.0, 10_000_000.0)
+        self.assertAlmostEqual(uf.dollar_volume(bars), 1000.0)

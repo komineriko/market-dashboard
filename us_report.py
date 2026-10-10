@@ -354,7 +354,7 @@ FILTERS = [
     f"{uo.BULLPUT_SHORT_DELTA[1]:.2f}",
     f"P売り：モメンタム {uo.TH_MOMENTUM_OK}以上 ＋ IV/MAD ≥ {uo.TH_IV_RICH:.2f}"
     f" ＋ Δ {uo.CSP_DELTA[0]:.2f}〜{uo.CSP_DELTA[1]:.2f}",
-    f"カバコ：50日線から {1.5:.1f}ATR以上の乖離 または MACDヒストの山越え ＋ "
+    f"カバコ：50日線から {uo.CC_MIN_DEV_ATR:.1f}ATR以上の乖離 または MACDヒストの山越え ＋ "
     f"IV/MAD ≥ {uo.TH_IV_RICH:.2f} ＋ Δ {uo.CC_DELTA[0]:.2f}〜{uo.CC_DELTA[1]:.2f}",
 ]
 
@@ -404,8 +404,10 @@ DEFINITIONS = [
 ]
 
 LIMITS = [
-    "オプション出来高の日次ランキングは無料では取れないため、ユニバースは"
-    "流動性のある銘柄を固定で持っている。日々の出来高の入れ替わりは追えていない。",
+    "銘柄リスト（us_universe.txt）に載っている銘柄のうち、テクニカルの条件を"
+    "どれか1つでも満たしたものだけ板を取りに行っている。板と決算は銘柄ごとの"
+    "リクエストになるため、全銘柄ぶん取ると時間がかかりすぎるため。"
+    "上限を超えた分は売買代金の小さい順に見送っている。",
     "気配はスナップショットで、約定できる保証はない。スプレッドの広い銘柄は"
     "MIDで約定しない。手数料・金利・配当は計算に含めていない。",
     "IVは気配のMIDから自前で逆算している（r=0、フォワードはプット・コール・"
@@ -502,6 +504,18 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
     blocked = len(getattr(rep, "earnings_blocked", []) or [])
     sources = []
     if rep is not None:
+        src = getattr(rep, "universe_source", "")
+        size = getattr(rep, "universe_size", 0)
+        short = getattr(rep, "shortlisted", 0)
+        capped = getattr(rep, "capped", 0)
+        if src:
+            line = f"銘柄リスト: {src}"
+            if short:
+                line += (f" → テクニカルで {short}銘柄に絞って板を取得")
+                if capped:
+                    line += (f"（条件は通ったが上限を超えた {capped}銘柄は"
+                             "売買代金の小さい順に見送り）")
+            sources.append(line)
         sources.append(f"日足・オプション板・決算予定: Yahoo Finance"
                        f"（{asof.isoformat()} の引け後のスナップショット）")
         if getattr(rep, "no_chain", None):
@@ -544,6 +558,7 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
             "base_weekday": "月火水木金土日"[asof.weekday()],
             "generated_at": datetime.now(JST).strftime("%Y-%m-%d %H:%M JST"),
             "scanned": scanned,
+            "universe_size": getattr(fetch_report, "universe_size", 0) or None,
             "contracts": contracts,
             "expiries": sorted(expiry_labels),
             "horizon": f"満期まで {uo.MIN_DTE}〜{uo.MAX_DTE}日",
