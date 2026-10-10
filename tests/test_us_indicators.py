@@ -132,3 +132,35 @@ class TestDefinitions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDegenerateSeries(unittest.TestCase):
+    """値が動かない配信を実現ボラとして受け取らないこと。
+
+    実データで、MADボラが年率3%と出た銘柄があり、IV÷実現ボラが25.7になった。
+    年率5%を下回る実現ボラの銘柄は無いので、配信側の異常とみなす。
+    """
+
+    def test_flat_series_has_no_usable_vol(self):
+        flat = [100.0] * 80
+        self.assertIsNone(ui.mad_vol(flat))
+
+    def test_mostly_repeated_closes_have_no_usable_vol(self):
+        closes = []
+        for i in range(80):
+            closes.append(100.0 if i % 5 else 100.0 * 1.0005)
+        self.assertIsNone(ui.mad_vol(closes))
+
+    def test_a_normal_series_is_kept(self):
+        import random
+        rng = random.Random(11)
+        closes = [100.0]
+        for _ in range(80):
+            closes.append(closes[-1] * (1 + rng.gauss(0, 0.011)))
+        v = ui.mad_vol(closes)
+        self.assertIsNotNone(v)
+        self.assertGreater(v, ui.MIN_PLAUSIBLE_VOL)
+
+    def test_real_data_is_unaffected(self):
+        closes = [b.close for b in load_nvda() if b.date <= "2026-10-08"]
+        self.assertAlmostEqual(ui.mad_vol(closes), 39.6, places=1)

@@ -467,7 +467,9 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
             iv = uo.atm_iv(e0, f, t)
             ratio = uo.iv_ratio(iv, tech)
         picked = sum(len(v) for v in found.values())
-        if ratio is not None and not uo.iv_is_sane(ratio):
+        if iv is not None and tech.mad_vol is None:
+            note = "実現ボラを算出できず除外"
+        elif ratio is not None and not uo.iv_is_sane(ratio):
             note = "IVが異常に高く除外"
             # 数字も一緒に出す。しきい値が妥当かを読む側が判断できるように。
             absurd.append(f"{u.symbol}（IV {iv:.0f}% ÷ MAD {tech.mad_vol:.0f}% "

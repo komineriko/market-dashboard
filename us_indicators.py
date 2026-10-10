@@ -16,6 +16,7 @@ from typing import List, Optional, Sequence
 
 TRADING_DAYS = 252
 MAD_TO_SIGMA = 1.4826          # 正規分布で MAD を標準偏差に合わせる係数
+MIN_PLAUSIBLE_VOL = 5.0        # 年率%。これを下回る実現ボラは配信側の異常
 
 
 @dataclass(frozen=True)
@@ -205,7 +206,11 @@ def mad_vol(closes: Sequence[float], n: int = 60) -> Optional[float]:
         return None
     med = _median(r)
     mad = _median([abs(x - med) for x in r])
-    return mad * MAD_TO_SIGMA * math.sqrt(TRADING_DAYS) * 100.0
+    v = mad * MAD_TO_SIGMA * math.sqrt(TRADING_DAYS) * 100.0
+    # 年率5%を下回る実現ボラの銘柄は無い。値が止まっている配信を拾っている。
+    # そのまま返すとIV÷実現ボラが何倍にも膨らみ、割高判定が壊れる
+    # （実データで、年率3%と出た銘柄の比が25.7になった）。
+    return v if v >= MIN_PLAUSIBLE_VOL else None
 
 
 def hv_excl_gap(closes: Sequence[float], n: int = 20, drop: int = 1) -> Optional[float]:
