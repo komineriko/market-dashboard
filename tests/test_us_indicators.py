@@ -102,6 +102,24 @@ class TestDefinitions(unittest.TestCase):
         spiked[-1] = spiked[-2] * 1.3
         self.assertAlmostEqual(base, ui.mad_vol(spiked), delta=1.0)
 
+    def test_golden_cross_is_dropped_once_price_crosses_back_down(self):
+        """上抜けたあとに下抜けたら、その上抜けはもう効いていない。
+
+        定義は「直近20本以内に上抜け、かつ現在も DIF > DEA」。後半を
+        見落とすと、すでに崩れた銘柄がコール買いとブルプットに出てしまう。
+        実データ（NVDA 2026-10-08 は GC 12本前）の後ろに急落を継ぎ足して確かめる。
+        """
+        closes = [b.close for b in load_nvda() if b.date <= "2026-10-08"]
+        self.assertEqual(ui.macd(closes).gc_bars_ago, 12)
+
+        broken = list(closes)
+        for _ in range(10):
+            broken.append(broken[-1] * 0.97)
+        m = ui.macd(broken)
+        self.assertLess(m.hist, 0, "急落後は DIF が DEA の下にいるはず")
+        self.assertIsNone(m.gc_bars_ago, "下抜けた後にGC扱いしてはいけない")
+        self.assertTrue(m.dead_cross_recent)
+
     def test_rsi_all_up_is_100(self):
         self.assertEqual(ui.rsi([100 + i for i in range(30)]), 100.0)
 

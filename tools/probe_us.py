@@ -1,7 +1,9 @@
 """実データで取得層が動くかを確かめるだけの使い捨てスクリプト。"""
+import os
 import sys
 from datetime import date
-sys.path.insert(0, "/home/user/market-dashboard")
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import us_fetch as uf, us_options as uo, us_report as ur
 
 syms = ("NVDA", "AAPL", "SPY", "QQQ", "TSLA", "AMD", "MU", "SMH")

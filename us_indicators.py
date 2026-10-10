@@ -149,12 +149,14 @@ def macd(closes: Sequence[float], atr_value: Optional[float] = None,
     gc_above_zero = None
     dead_cross_recent = False
     span = min(lookback, len(pairs) - 1)
+    # 上抜けを探すのは、いま DIF が DEA の上にいるときだけ。
+    # 上抜けたあとに下抜けていれば、その上抜けはもう効いていない。
+    looking_for_gc = hist[-1] > 0
     for back in range(span):
         i = len(pairs) - 1 - back
-        if hist[i] > 0 and hist[i - 1] <= 0:
-            if gc_bars_ago is None:
-                gc_bars_ago = back
-                gc_above_zero = pairs[i][0] > 0
+        if looking_for_gc and gc_bars_ago is None and hist[i] > 0 and hist[i - 1] <= 0:
+            gc_bars_ago = back
+            gc_above_zero = pairs[i][0] > 0
         if hist[i] < 0 and hist[i - 1] >= 0 and gc_bars_ago is None:
             dead_cross_recent = True
 
