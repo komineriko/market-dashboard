@@ -367,14 +367,19 @@ def chain_from_frames(calls, puts) -> List[uo.StrikeQuote]:
     return [rows[k] for k in sorted(rows)]
 
 
-def fetch_expiries(symbol: str, asof: date, max_dte: int = uo.MAX_DTE,
-                   min_dte: int = 0) -> List[uo.Expiry]:
+def fetch_expiries(symbol: str, asof: date, max_dte: int = None,
+                   min_dte: int = 0, keep=None) -> List[uo.Expiry]:
     """指定した残存日数の範囲の満期をすべて取る。
 
     既定では手前の満期も取る。ウォールを「その満期までの全満期を合算」で
     出すので、当週の建玉を落とすと壁が実勢より薄く出るため。
     カレンダーの後ろ足を取るときは min_dte を立てて離れた限月だけを採る。
+    keep を渡すと、範囲を通ったあとにもう一段ふるいにかけられる。
     """
+    if max_dte is None:
+        max_dte = uo.MONTHLY_MAX_DTE
+        if keep is None:
+            keep = uo.in_fetch_window
     import yfinance as yf
     try:
         tk = yf.Ticker(symbol)
@@ -390,6 +395,8 @@ def fetch_expiries(symbol: str, asof: date, max_dte: int = uo.MAX_DTE,
         except ValueError:
             continue
         if dte < min_dte or dte > max_dte:
+            continue
+        if keep is not None and not keep(dte, date.fromisoformat(d)):
             continue
         try:
             ch = tk.option_chain(d)

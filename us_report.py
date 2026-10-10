@@ -484,7 +484,8 @@ def freshness(base: date) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 FILTERS = [
-    f"共通：満期まで {uo.MIN_DTE}〜{uo.MAX_DTE}日／決算をまたぐ限月は除外／"
+    f"共通：満期まで {uo.MIN_DTE}〜{uo.MAX_DTE}日（月限は{uo.MONTHLY_MAX_DTE}日まで）"
+    f"／決算をまたぐ限月は除外／"
     f"建玉 {uo.MIN_OI:,}枚以上・スプレッド {uo.MAX_SPREAD_PCT:.0f}%以内",
     f"コール買い：乖離 {uo.TH_OVEREXTENDED_ATR:.0f}ATR未満 ＋ MACD GC"
     f"（{uo.TH_GC_APPROACH_ATR}ATR以内の接近を含む） ＋ IV/MAD ≤ {uo.TH_IV_CHEAP:.2f}"
@@ -508,6 +509,13 @@ FILTERS = [
 ]
 
 DEFINITIONS = [
+    ("対象にする満期",
+     f"週次は {uo.MIN_DTE}〜{uo.MAX_DTE}日。月限（第3金曜）だけは "
+     f"{uo.MONTHLY_MAX_DTE}日まで通している。月限は直後に当たると次が35日先に"
+     "なるため、週次の窓を広げる形だと入る日と入らない日ができてしまう。"
+     "建玉はたいてい月限がいちばん厚いので、常に1本は候補に入るようにした。"
+     "なお月限とその手前の週次（17〜30日あたり）は板を取っていないので、"
+     "月限の候補についてはウォールの合算からその分が抜けている。"),
     ("現値",
      "板のプット・コール・パリティ（F = K + C − P）から逆算した値。"
      "日足の配信は引けから数時間遅れることがあり、そのまま日足の終値を現値に"
@@ -714,7 +722,8 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
             "universe_size": getattr(fetch_report, "universe_size", 0) or None,
             "contracts": contracts,
             "expiries": sorted(expiry_labels),
-            "horizon": f"満期まで {uo.MIN_DTE}〜{uo.MAX_DTE}日",
+            "horizon": f"満期まで {uo.MIN_DTE}〜{uo.MAX_DTE}日・月限は"
+                       f"{uo.MONTHLY_MAX_DTE}日まで",
             "sources": sources,
             **freshness(asof),
         },

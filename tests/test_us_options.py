@@ -1099,3 +1099,84 @@ def load_nvda_closes():
         return [ui.Bar(r["date"], float(r["high"]), float(r["low"]),
                        float(r["close"]))
                 for r in _csv.DictReader(fh) if r["date"] <= "2026-10-08"]
+
+
+class TestMonthlyExpiryWindow(unittest.TestCase):
+    """月限（第3金曜）は週次の窓より遠くても採る。
+
+    月限の直後は次の月限が35日先になるので、週次の窓を広げる形だと
+    入る日と入らない日ができてしまう。
+    """
+
+    def test_third_friday(self):
+        self.assertEqual(uo.third_friday(2026, 10), date(2026, 10, 16))
+        self.assertEqual(uo.third_friday(2026, 11), date(2026, 11, 20))
+        self.assertEqual(uo.third_friday(2026, 12), date(2026, 12, 18))
+        self.assertEqual(uo.third_friday(2027, 1), date(2027, 1, 15))
+        self.assertEqual(uo.third_friday(2027, 5), date(2027, 5, 21))
+
+    def test_third_friday_is_always_a_friday(self):
+        for y in (2026, 2027):
+            for m in range(1, 13):
+                self.assertEqual(uo.third_friday(y, m).weekday(), 4)
+
+    def test_is_monthly(self):
+        self.assertTrue(uo.is_monthly(date(2026, 11, 20)))
+        self.assertFalse(uo.is_monthly(date(2026, 11, 13)))
+        self.assertFalse(uo.is_monthly(date(2026, 11, 27)))
+
+    def test_weekly_window_is_unchanged(self):
+        base = date(2026, 10, 19)
+        for dte in (uo.MIN_DTE, 10, uo.MAX_DTE):
+            d = base + timedelta(days=dte)
+            self.assertTrue(uo.in_screen_window(dte, d))
+        self.assertFalse(uo.in_screen_window(uo.MIN_DTE - 1,
+                                             base + timedelta(days=uo.MIN_DTE - 1)))
+
+    def test_weeklies_beyond_the_window_are_still_rejected(self):
+        base = date(2026, 10, 19)
+        for dte in (17, 21, 28, 35):
+            d = base + timedelta(days=dte)
+            if uo.is_monthly(d):
+                continue
+            self.assertFalse(uo.in_screen_window(dte, d),
+                             f"{d} は月限ではないので採ってはいけない")
+
+    def test_the_next_monthly_is_always_reachable(self):
+        """どの日を基準にしても、次の月限が窓に入ること。"""
+        d = date(2026, 1, 1)
+        while d < date(2027, 1, 1):
+            nxt = uo.third_friday(d.year, d.month)
+            if nxt < d:
+                y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+                nxt = uo.third_friday(y, m)
+            dte = (nxt - d).days
+            if dte >= uo.MIN_DTE:
+                self.assertTrue(uo.in_screen_window(dte, nxt),
+                                f"{d} から見た月限 {nxt}（{dte}日）が窓に入らない")
+            d += timedelta(days=1)
+
+    def test_fetch_window_also_keeps_the_near_expiries(self):
+        """ウォールの合算に使うので、MIN_DTE より手前も取る。"""
+        base = date(2026, 10, 19)
+        self.assertTrue(uo.in_fetch_window(1, base + timedelta(days=1)))
+        self.assertFalse(uo.in_fetch_window(-1, base - timedelta(days=1)))
+        self.assertTrue(uo.in_fetch_window(32, date(2026, 11, 20)))
+        self.assertFalse(uo.in_fetch_window(38, base + timedelta(days=38)))
+
+    def test_usable_expiries_picks_up_a_distant_monthly(self):
+        asof = date(2026, 10, 19)
+        bars = [ui.Bar(f"2026-08-{(i % 28) + 1:02d}", 101, 99, 100.0)
+                for i in range(80)]
+        monthly = uo.Expiry(expiry="2026-11-20",
+                            rows=flat_chain(100.0, 32, 0.3).rows)
+        weekly_far = uo.Expiry(expiry="2026-11-13",
+                               rows=flat_chain(100.0, 25, 0.3).rows)
+        weekly_near = uo.Expiry(expiry="2026-10-26",
+                                rows=flat_chain(100.0, 7, 0.3).rows)
+        u = uo.Underlying(symbol="X", bars=bars,
+                          expiries=[weekly_near, weekly_far, monthly])
+        got = [e.expiry for e in uo.usable_expiries(u, asof)]
+        self.assertIn("2026-11-20", got, "月限が落ちている")
+        self.assertNotIn("2026-11-13", got, "月限でない25日物は採ってはいけない")
+        self.assertIn("2026-10-26", got)

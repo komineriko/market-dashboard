@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import sq_analytics as sa
@@ -33,7 +33,11 @@ MIN_UNDERLYING = 10.0
 
 # --- 期間 -------------------------------------------------------------------
 MIN_DTE = 5                     # 数日〜2週間の取引を想定
-MAX_DTE = 16                    # 2週間＋数日。ここを広げれば月限も入る
+MAX_DTE = 16                    # 週次の窓。2週間＋数日
+# 月限（第3金曜）だけはこの距離まで通す。月限は直後に当たると次が35日先に
+# なるので、週次の窓を広げる形だと入る日と入らない日ができてしまう。
+# 建玉はたいてい月限がいちばん厚いので、常に1本は候補に入るようにする。
+MONTHLY_MAX_DTE = 37
 
 # --- 判定のしきい値 ---------------------------------------------------------
 TH_IV_CHEAP = 0.85              # IV ÷ MADボラ。これ以下で「買い有利」
@@ -513,6 +517,39 @@ class Candidate:
     rank: float = 0.0
 
 
+def third_friday(year: int, month: int) -> date:
+    """その月の第3金曜。米国オプションの月限。"""
+    first = date(year, month, 1)
+    first_friday = first + timedelta(days=(4 - first.weekday()) % 7)
+    return first_friday + timedelta(days=14)
+
+
+def is_monthly(d: date) -> bool:
+    return d == third_friday(d.year, d.month)
+
+
+def in_screen_window(dte: int, expiry: date) -> bool:
+    """候補として採る満期か。週次は MAX_DTE まで、月限は MONTHLY_MAX_DTE まで。"""
+    if dte < MIN_DTE:
+        return False
+    if dte <= MAX_DTE:
+        return True
+    return dte <= MONTHLY_MAX_DTE and is_monthly(expiry)
+
+
+def in_fetch_window(dte: int, expiry: date) -> bool:
+    """板を取りに行く満期か。
+
+    MIN_DTE より手前も取る。ウォールを「その満期までの全満期を合算」で
+    出すので、当週の建玉を落とすと壁が実勢より薄く出るため。
+    """
+    if dte < 0:
+        return False
+    if dte <= MAX_DTE:
+        return True
+    return dte <= MONTHLY_MAX_DTE and is_monthly(expiry)
+
+
 def _crosses_earnings(u: Underlying, asof: date, expiry: str) -> bool:
     if not u.earnings:
         return False
@@ -526,9 +563,11 @@ def _crosses_earnings(u: Underlying, asof: date, expiry: str) -> bool:
 def usable_expiries(u: Underlying, asof: date) -> List[Expiry]:
     out = []
     for e in u.expiries:
-        d = e.dte(asof)
-        if MIN_DTE <= d <= MAX_DTE and not _crosses_earnings(u, asof, e.expiry):
-            out.append(e)
+        if not in_screen_window(e.dte(asof), date.fromisoformat(e.expiry)):
+            continue
+        if _crosses_earnings(u, asof, e.expiry):
+            continue
+        out.append(e)
     return sorted(out, key=lambda e: e.dte(asof))
 
 
