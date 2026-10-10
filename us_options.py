@@ -114,12 +114,24 @@ class Underlying:
     bars: List[ui.Bar]
     expiries: List[Expiry]
     earnings: Optional[str] = None          # 次回決算日 YYYY-MM-DD
-    earnings_estimated: bool = False
     held: bool = False                      # 現物を持っているか
-    name: Optional[str] = None
+    ref_price: Optional[float] = None       # 板から逆算した現値（下の注記）
 
     @property
     def spot(self) -> float:
+        """いまの株価として使う値。
+
+        日足の配信は引けから数時間遅れることがあり、板のほうが1営業日新しい
+        ことがある（実測: 引けの4時間45分後でも前日分までしか来ていなかった）。
+        そのまま日足の終値を現値として使うと、板が織り込んでいる株価と
+        ずれたままデルタも損益分岐も出してしまう。
+        パリティから逆算したフォワードは実際の直近終値をほぼ復元するので、
+        取れるときはそちらを優先する。
+        """
+        return self.ref_price if self.ref_price else self.bars[-1].close
+
+    @property
+    def last_bar_close(self) -> float:
         return self.bars[-1].close
 
 
@@ -313,6 +325,19 @@ class Technicals:
         """MACDヒストの山越え。勢いは正だが細り始めている。"""
         m = self.macd
         return bool(m and m.hist > 0 and m.hist_prev is not None and m.hist < m.hist_prev)
+
+
+def reference_price(u: Underlying, asof: date) -> float:
+    """板から逆算した現値。取れなければ日足の終値。
+
+    キャリーの分だけフォワードは現値より上だが、2週間で 0.1% 程度しかない。
+    日足が1営業日遅れたときのずれ（実測 0.5%）よりはるかに小さい。
+    """
+    exps = usable_expiries(u, asof) or [e for e in u.expiries if e.dte(asof) >= 0]
+    close = u.bars[-1].close
+    if not exps:
+        return close
+    return implied_forward(sorted(exps, key=lambda e: e.dte(asof))[0], close, asof)
 
 
 def technicals(u: Underlying) -> Technicals:
@@ -677,6 +702,8 @@ SCREENS = (
 
 
 def screen_symbol(u: Underlying, asof: date) -> Tuple[Technicals, Dict[str, List[Candidate]]]:
+    # 現値は板から取り直す。テクニカルは完成した日足のまま計算する。
+    u.ref_price = reference_price(u, asof)
     tech = technicals(u)
     usable = usable_expiries(u, asof)
     # ウォールは「その満期までの全満期を合算」して出す。手前の満期の建玉も

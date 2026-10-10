@@ -35,6 +35,35 @@ def log(msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 立会日
+# ---------------------------------------------------------------------------
+
+def _eastern_now() -> datetime:
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/New_York"))
+    except Exception:  # noqa: BLE001 - tzdataが無い環境では夏時間を無視する
+        return datetime.now(timezone.utc) - timedelta(hours=5)
+
+
+def board_date_from_clock() -> date:
+    """直近の「終わった立会日」。
+
+    日足の配信は引けから数時間遅れることがあるので、日足の最終日をそのまま
+    基準日にすると残存日数が1日ずれる。板は引け値で出ているので、
+    時計から立会日を決めて板に合わせる。
+    """
+    import us_report as ur         # 米国の休場日はレポート側に持っている
+    now = _eastern_now()
+    d = now.date()
+    if now.hour < 16 or d.weekday() >= 5 or d in ur.US_HOLIDAYS:
+        d -= timedelta(days=1)
+        while d.weekday() >= 5 or d in ur.US_HOLIDAYS:
+            d -= timedelta(days=1)
+    return d
+
+
+# ---------------------------------------------------------------------------
 # ユニバース
 # ---------------------------------------------------------------------------
 
@@ -377,6 +406,7 @@ class FetchReport:
     earnings_blocked: List[str] = None
     earnings_unknown: List[str] = None
     earnings_available: bool = True
+    bars_lag_days: int = 0          # 板より日足が何営業日ぶん古いか
 
     def __post_init__(self):
         for f in ("ok", "no_bars", "no_chain", "earnings_blocked",
@@ -401,6 +431,14 @@ def load_universe(symbols: Sequence[str] = UNIVERSE,
     rep.earnings_available = bool(earnings)
     rep.earnings_unknown = unknown
 
+    board_date = asof or board_date_from_clock()
+    rep.asof = board_date
+    # 日足が板より古いかを記録する。古いままテクニカルを出すこと自体は
+    # 構わないが、黙ってやると「いつの数字か」が分からなくなる。
+    newest_bar = max((b[-1].date for b in bars_map.values() if b), default=None)
+    if newest_bar and newest_bar < board_date.isoformat():
+        rep.bars_lag_days = (board_date - date.fromisoformat(newest_bar)).days
+
     out: List[uo.Underlying] = []
     for sym in usable:
         bars = bars_map[sym]
@@ -409,10 +447,6 @@ def load_universe(symbols: Sequence[str] = UNIVERSE,
         if sym in unknown:
             # 決算日が分からない銘柄は、またぐかどうかを判定できないので外す。
             continue
-        # 板の日付は日足の最終日に合わせる。両者がずれると乖離もIVもずれる。
-        board_date = asof or date.fromisoformat(bars[-1].date)
-        if rep.asof is None:
-            rep.asof = board_date
         exps = fetch_expiries(sym, board_date)
         if not exps:
             rep.no_chain.append(sym)

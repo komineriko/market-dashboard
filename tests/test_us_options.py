@@ -433,10 +433,22 @@ class TestReport(unittest.TestCase):
 
 class TestFreshness(unittest.TestCase):
 
-    def test_friday_points_at_monday_evening_et(self):
+    def test_friday_points_at_the_next_session_published_the_day_after(self):
         f = ur.freshness(date(2026, 10, 9))          # 金曜
-        self.assertEqual(f["next_board_date"], "2026-10-12")
-        self.assertIn("10/13", f["next_update_label"])   # JSTでは翌朝
+        self.assertEqual(f["next_board_date"], "2026-10-12")   # 次の立会日は月曜
+        self.assertIn("10/13", f["next_update_label"])         # 載るのは火曜
+
+    def test_publish_hour_matches_the_workflow_cron(self):
+        """ページに出す予定時刻と実際の実行時刻がずれると意味が無い。"""
+        import os
+        import re
+        path = os.path.join(os.path.dirname(HERE_DIR),
+                            ".github", "workflows", "update-us-options.yml")
+        with open(path, encoding="utf-8") as fh:
+            yml = fh.read()
+        m = re.search(r'cron:\s*"(\d+)\s+(\d+)\s', yml)
+        self.assertIsNotNone(m, "cron が読めない")
+        self.assertEqual(int(m.group(2)), ur.PUBLISH_UTC_HOUR)
 
     def test_us_holiday_is_skipped(self):
         # 2026-11-26 は感謝祭
@@ -499,6 +511,40 @@ HERE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBoardDate(unittest.TestCase):
+    """基準日は時計から決める。
+
+    日足の最終日をそのまま使うと、配信が遅れた日に残存日数が1日ずれる。
+    """
+
+    def test_lands_on_a_weekday(self):
+        d = uf.board_date_from_clock()
+        self.assertLess(d.weekday(), 5)
+
+    def test_is_not_in_the_future(self):
+        from datetime import datetime as dt
+        self.assertLessEqual(uf.board_date_from_clock(), dt.utcnow().date())
+
+    def test_reference_price_prefers_the_chain(self):
+        """日足が1営業日古いとき、現値は板から取り直すこと。"""
+        bars = [ui.Bar(f"2026-08-{(i % 28) + 1:02d}", 101, 99, 100.0)
+                for i in range(80)]
+        # 板は 95 を織り込んでいる（日足の 100 より新しい）
+        u = uo.Underlying(symbol="X", bars=bars,
+                          expiries=[flat_chain(95.0, 10, 0.30, oi=3000)])
+        self.assertAlmostEqual(u.spot, 100.0)              # 設定前は日足の終値
+        uo.screen_symbol(u, ASOF)
+        self.assertAlmostEqual(u.spot, 95.0, delta=0.5)    # 設定後は板の値
+        self.assertAlmostEqual(u.last_bar_close, 100.0)
+
+    def test_reference_price_falls_back_to_the_last_close(self):
+        bars = [ui.Bar(f"2026-08-{(i % 28) + 1:02d}", 101, 99, 100.0)
+                for i in range(80)]
+        u = uo.Underlying(symbol="X", bars=bars, expiries=[])
+        uo.screen_symbol(u, ASOF)
+        self.assertAlmostEqual(u.spot, 100.0)
 
 
 class TestDateCoercion(unittest.TestCase):

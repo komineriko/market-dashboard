@@ -200,7 +200,7 @@ def _tech_row(t: uo.Technicals, u: uo.Underlying, iv: Optional[float],
     return {
         "symbol": t.symbol,
         "cells": [
-            _f(t.spot),
+            _f(u.spot),
             _f(t.dev_atr, 1, " ATR"),
             _pct(t.dev_pct),
             _f(t.rsi, 1),
@@ -314,19 +314,25 @@ def next_us_business_day(d: date) -> date:
     return n
 
 
+PUBLISH_UTC_HOUR = 9        # ワークフローの cron と合わせること
+
+
 def freshness(base: date) -> Dict[str, Any]:
     """次の更新予定。
 
-    米国の引け（16:00 ET）後に回すので、基準日の次の営業日の板は
-    その日の夜＝日本時間の翌朝に載る。
+    引けの直後だと日足の配信が間に合わないので、翌日の 09:00 UTC に回している。
+    つまり立会日 D の分は D+1 の 09:00 UTC ＝ 日本時間 D+1 の 18:00 に載る。
     """
     nxt = next_us_business_day(base)
-    at = datetime(nxt.year, nxt.month, nxt.day, 22, 0, tzinfo=timezone.utc)
+    pub = nxt + timedelta(days=1)
+    at = datetime(pub.year, pub.month, pub.day, PUBLISH_UTC_HOUR, 0,
+                  tzinfo=timezone.utc)
     jst = at.astimezone(JST)
     wd = "月火水木金土日"
     return {
         "next_board_date": nxt.isoformat(),
         "next_board_label": f"{nxt.month}/{nxt.day}",
+        "publish_hour_utc": PUBLISH_UTC_HOUR,
         "next_update_at": at.isoformat(),
         "next_update_label": f"{jst.month}/{jst.day}({wd[jst.weekday()]}) "
                              f"{jst.hour:02d}:00 JST 頃",
@@ -353,6 +359,11 @@ FILTERS = [
 ]
 
 DEFINITIONS = [
+    ("現値",
+     "板のプット・コール・パリティ（F = K + C − P）から逆算した値。"
+     "日足の配信は引けから数時間遅れることがあり、そのまま日足の終値を現値に"
+     "すると板が織り込んでいる株価とずれる。乖離・RSI・MACDは完成した日足で"
+     "計算しているので、日足が遅れている日はその旨をデータの出どころに書く。"),
     ("乖離：ATR換算",
      "単純な乖離率(%)ではボラティリティの高い銘柄が不当に「離れている」と判定される。"
      "乖離 ÷ ATR(14) で、ふだんの1日の値幅の何本分だけ50日線から離れているかを見る。"
@@ -473,6 +484,11 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
             sources.append("⚠ 日足を取得できなかった銘柄: "
                            + "、".join(rep.no_bars[:12])
                            + ("…" if len(rep.no_bars) > 12 else ""))
+        lag = getattr(rep, "bars_lag_days", 0) or 0
+        if lag:
+            sources.append(
+                f"⚠ 日足の配信が板より {lag}日遅れている。現値は板のパリティから"
+                "逆算した値を使い、乖離・RSI・MACDは1本前の日足で計算している")
         unknown = getattr(rep, "earnings_unknown", None) or []
         if unknown:
             sources.append(
