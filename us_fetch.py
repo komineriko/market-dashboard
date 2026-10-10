@@ -4,9 +4,8 @@
   決算予定      銘柄ごと。取れなかった銘柄はスクリーニングから外す
   オプション板  行使価格別の気配・建玉が無料で取れるのはここだけ
 
-FMPを日足に使うのはやめた。無料枠の上限が既存のダッシュボードで先に消費されて
-おり、実データで試すと全銘柄が 429 になった（決算カレンダーは0件で返る）。
-FMP_API_KEY があれば決算予定の補完にだけ使う。
+FMPは使わない。無料枠の上限が既存のダッシュボードで先に消費されており、
+実データで試すと日足は全銘柄 429、決算カレンダーは0件で返った。
 
 取得できなかったものは黙って埋めず、呼び出し側に None を返して開示させる。
 """
@@ -24,8 +23,6 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import us_indicators as ui
 import us_options as uo
 
-FMP_BASE = "https://financialmodelingprep.com/stable"
-FMP_KEY = os.environ.get("FMP_API_KEY")
 REQUEST_SLEEP = float(os.environ.get("US_REQUEST_SLEEP", "0.15"))
 CHAIN_SLEEP = float(os.environ.get("US_CHAIN_SLEEP", "0.25"))
 
@@ -110,33 +107,8 @@ def load_holdings() -> Optional[List[str]]:
 
 
 # ---------------------------------------------------------------------------
-# FMP
+# 日足
 # ---------------------------------------------------------------------------
-
-def _fmp(path: str, params: Dict[str, object], retries: int = 3):
-    import requests
-    if not FMP_KEY:
-        raise RuntimeError("FMP_API_KEY が設定されていません")
-    p = dict(params)
-    p["apikey"] = FMP_KEY
-    last = None
-    for attempt in range(retries):
-        try:
-            r = requests.get(f"{FMP_BASE}/{path}", params=p, timeout=25)
-            time.sleep(REQUEST_SLEEP)
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:  # noqa: BLE001 - 失敗の種類ごとの扱いは下で決める
-            last = e
-            status = getattr(getattr(e, "response", None), "status_code", None)
-            if status in (429, 402) and attempt < retries - 1:
-                wait = 2 * (attempt + 1)
-                log(f"WARN: {path} が {status}。{wait}秒待って再試行")
-                time.sleep(wait)
-                continue
-            raise
-    raise last
-
 
 def _chunks(xs: Sequence[str], n: int) -> List[List[str]]:
     return [list(xs[i:i + n]) for i in range(0, len(xs), n)]
@@ -254,34 +226,7 @@ def _as_date(x) -> Optional[date]:
         return None
 
 
-def _earnings_from_fmp(ahead_days: int) -> Dict[str, str]:
-    """FMPが使えるときだけの補完。無料枠では 429 や 0件で返ることがある。"""
-    if not FMP_KEY:
-        return {}
-    import requests
-    today = datetime.now(timezone.utc).date()
-    try:
-        r = requests.get(f"{FMP_BASE}/earnings-calendar",
-                         params={"from": today.isoformat(),
-                                 "to": (today + timedelta(days=ahead_days)).isoformat(),
-                                 "apikey": FMP_KEY}, timeout=25)
-        r.raise_for_status()
-        rows = r.json()
-    except Exception as e:  # noqa: BLE001
-        log(f"WARN: FMPの決算カレンダーは使えませんでした: {e}")
-        return {}
-    out: Dict[str, str] = {}
-    if not isinstance(rows, list):
-        return out
-    for row in rows:
-        sym, d = row.get("symbol"), row.get("date")
-        if sym and d and (sym not in out or d < out[sym]):
-            out[sym] = d
-    return out
-
-
-def fetch_earnings_map(symbols: Sequence[str], ahead_days: int = 75
-                       ) -> Tuple[Dict[str, str], List[str]]:
+def fetch_earnings_map(symbols: Sequence[str]) -> Tuple[Dict[str, str], List[str]]:
     """{銘柄: 次回決算日} と、決算日が分からなかった銘柄の一覧。
 
     分からない銘柄は呼び出し側でスクリーニングから外す。「決算をまたぐ限月は
@@ -289,9 +234,7 @@ def fetch_earnings_map(symbols: Sequence[str], ahead_days: int = 75
     不明なまま候補に出すほうが危ない。
     """
     today = datetime.now(timezone.utc).date()
-    out = _earnings_from_fmp(ahead_days)
-    if out:
-        log(f"FMPの決算カレンダー: {len(out)}件")
+    out: Dict[str, str] = {}
     unknown: List[str] = []
     for sym in symbols:
         if sym in out:

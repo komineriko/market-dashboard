@@ -10,9 +10,6 @@ on:
     # 1営業日ずれる。12時間以上あけて両方そろってから回す。
     # 18:00 JST は米国の寄り付きの数時間前なので、見る側にも都合がよい。
     - cron: "0 9 * * 2-6"
-  push:
-    # 一時的。取得層を実データで確認したら外す。
-    branches: [claude/daily-report-creation-0i8c9c]
   workflow_dispatch:
     inputs:
       limit:
@@ -53,21 +50,12 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests
 
-      - name: Probe real data
-        if: github.event_name == 'push'
-        env:
-          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-        run: python tools/probe_us.py
-
       - name: Build report
-        env:
-          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-          US_LIMIT: "8"   # 一時的。確認が済んだら外す
         run: |
           ARGS=""
-          LIMIT="${{ github.event.inputs.limit }}"
-          if [ -z "$LIMIT" ] && [ -n "$US_LIMIT" ]; then LIMIT="$US_LIMIT"; fi
-          if [ -n "$LIMIT" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ github.event.inputs.limit }}"
+          fi
           if [ -n "${{ github.event.inputs.date }}" ]; then
             ARGS="$ARGS --date ${{ github.event.inputs.date }}"
           fi
@@ -85,7 +73,6 @@ jobs:
           retention-days: 3
 
       - name: Commit and push if changed
-        if: github.event_name != 'push'
         run: |
           if [ -z "$(git status --porcelain us_options.html)" ]; then
             echo "変更なし。"
