@@ -1,8 +1,12 @@
-"""米国株オプションのデータ取得。
+"""米国株オプションのデータ取得。すべて yfinance から取る。
 
-  日足          FMP (historical-price-eod/full)。高値・安値が要るので light は使わない
-  決算予定      FMP (earnings-calendar)。期間を1回引いて銘柄で索く
-  オプション板  yfinance。行使価格別の気配・建玉が無料で取れるのはここだけ
+  日足          まとめて1リクエストで取る（銘柄ごとに叩くと数が多すぎる）
+  決算予定      銘柄ごと。取れなかった銘柄はスクリーニングから外す
+  オプション板  行使価格別の気配・建玉が無料で取れるのはここだけ
+
+FMPを日足に使うのはやめた。無料枠の上限が既存のダッシュボードで先に消費されて
+おり、実データで試すと全銘柄が 429 になった（決算カレンダーは0件で返る）。
+FMP_API_KEY があれば決算予定の補完にだけ使う。
 
 取得できなかったものは黙って埋めず、呼び出し側に None を返して開示させる。
 """
@@ -105,48 +109,157 @@ def _fmp(path: str, params: Dict[str, object], retries: int = 3):
     raise last
 
 
-def fetch_bars(symbol: str, days: int = 400) -> List[ui.Bar]:
-    to_d = datetime.now(timezone.utc).date()
-    from_d = to_d - timedelta(days=days)
+def _chunks(xs: Sequence[str], n: int) -> List[List[str]]:
+    return [list(xs[i:i + n]) for i in range(0, len(xs), n)]
+
+
+def _rows_for(df, symbol: str, multi: bool) -> List[ui.Bar]:
+    """yfinance の DataFrame から 1銘柄分の日足を取り出す。
+
+    複数銘柄をまとめて取ると列が (銘柄, 項目) の2段になり、1銘柄だと1段になる。
+    バージョンによってどちらで返るかが変わるので、両方を受け付ける。
+    """
     try:
-        rows = _fmp("historical-price-eod/full",
-                    {"symbol": symbol, "from": from_d.isoformat(), "to": to_d.isoformat()})
-    except Exception as e:  # noqa: BLE001
-        log(f"WARN: {symbol} の日足を取得できませんでした: {e}")
-        return []
-    if not isinstance(rows, list):
+        sub = df[symbol] if multi else df
+    except (KeyError, IndexError):
         return []
     out: List[ui.Bar] = []
-    for r in rows:
-        try:
-            out.append(ui.Bar(r["date"], float(r["high"]), float(r["low"]),
-                              float(r["close"])))
-        except (KeyError, TypeError, ValueError):
+    for idx, row in sub.iterrows():
+        h, l, c = _num(row.get("High")), _num(row.get("Low")), _num(row.get("Close"))
+        if h is None or l is None or c is None:
             continue
+        out.append(ui.Bar(str(idx)[:10], h, l, c))
     out.sort(key=lambda b: b.date)
     return out
 
 
-def fetch_earnings_map(ahead_days: int = 60) -> Dict[str, str]:
-    """今日から ahead_days 先までの決算予定を {銘柄: 最初の日付} で返す。"""
+def fetch_bars_many(symbols: Sequence[str], period: str = "2y"
+                    ) -> Dict[str, List[ui.Bar]]:
+    """日足をまとめて取る。
+
+    銘柄ごとに叩くと 60本超のリクエストになり、弾かれやすい。
+    配当調整はかけない（素の終値。参考にした元レポートと揃える）。
+    """
+    import yfinance as yf
+    out: Dict[str, List[ui.Bar]] = {}
+    for chunk in _chunks(list(symbols), 20):
+        try:
+            df = yf.download(chunk, period=period, interval="1d",
+                             group_by="ticker", auto_adjust=False,
+                             threads=True, progress=False)
+        except Exception as e:  # noqa: BLE001
+            log(f"WARN: 日足のまとめ取得に失敗: {e}")
+            continue
+        if df is None or len(df) == 0:
+            log(f"WARN: 日足が空で返りました: {chunk}")
+            continue
+        multi = hasattr(df.columns, "nlevels") and df.columns.nlevels > 1
+        for sym in chunk:
+            bars = _rows_for(df, sym, multi)
+            if bars:
+                out[sym] = bars
+        time.sleep(REQUEST_SLEEP)
+    return out
+
+
+def fetch_bars(symbol: str, period: str = "2y") -> List[ui.Bar]:
+    return fetch_bars_many([symbol], period).get(symbol, [])
+
+
+def _earnings_from_yf(symbol: str, today: date) -> Optional[str]:
+    """yfinance から次回決算日。見つからなければ None。"""
+    import yfinance as yf
+    tk = yf.Ticker(symbol)
+    # まず確定済みの予定表
+    try:
+        cal = tk.calendar
+    except Exception:  # noqa: BLE001
+        cal = None
+    cands: List[date] = []
+    if isinstance(cal, dict):
+        v = cal.get("Earnings Date")
+        for x in (v if isinstance(v, (list, tuple)) else [v]):
+            d = _as_date(x)
+            if d:
+                cands.append(d)
+    # 次に過去＋将来の一覧
+    try:
+        df = tk.get_earnings_dates(limit=12)
+    except Exception:  # noqa: BLE001
+        df = None
+    if df is not None and len(df):
+        for idx in df.index:
+            d = _as_date(idx)
+            if d:
+                cands.append(d)
+    future = sorted(d for d in cands if d >= today)
+    return future[0].isoformat() if future else None
+
+
+def _as_date(x) -> Optional[date]:
+    if x is None:
+        return None
+    if isinstance(x, date):
+        return x
+    try:
+        return date.fromisoformat(str(x)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def _earnings_from_fmp(ahead_days: int) -> Dict[str, str]:
+    """FMPが使えるときだけの補完。無料枠では 429 や 0件で返ることがある。"""
+    if not FMP_KEY:
+        return {}
+    import requests
     today = datetime.now(timezone.utc).date()
     try:
-        rows = _fmp("earnings-calendar",
-                    {"from": today.isoformat(),
-                     "to": (today + timedelta(days=ahead_days)).isoformat()})
+        r = requests.get(f"{FMP_BASE}/earnings-calendar",
+                         params={"from": today.isoformat(),
+                                 "to": (today + timedelta(days=ahead_days)).isoformat(),
+                                 "apikey": FMP_KEY}, timeout=25)
+        r.raise_for_status()
+        rows = r.json()
     except Exception as e:  # noqa: BLE001
-        log(f"WARN: 決算予定を取得できませんでした: {e}")
+        log(f"WARN: FMPの決算カレンダーは使えませんでした: {e}")
         return {}
     out: Dict[str, str] = {}
     if not isinstance(rows, list):
         return out
-    for r in rows:
-        sym, d = r.get("symbol"), r.get("date")
-        if not sym or not d:
-            continue
-        if sym not in out or d < out[sym]:
+    for row in rows:
+        sym, d = row.get("symbol"), row.get("date")
+        if sym and d and (sym not in out or d < out[sym]):
             out[sym] = d
     return out
+
+
+def fetch_earnings_map(symbols: Sequence[str], ahead_days: int = 75
+                       ) -> Tuple[Dict[str, str], List[str]]:
+    """{銘柄: 次回決算日} と、決算日が分からなかった銘柄の一覧。
+
+    分からない銘柄は呼び出し側でスクリーニングから外す。「決算をまたぐ限月は
+    除外」は満たせるかどうかが分からない時点で守れていないので、
+    不明なまま候補に出すほうが危ない。
+    """
+    today = datetime.now(timezone.utc).date()
+    out = _earnings_from_fmp(ahead_days)
+    if out:
+        log(f"FMPの決算カレンダー: {len(out)}件")
+    unknown: List[str] = []
+    for sym in symbols:
+        if sym in out:
+            continue
+        try:
+            d = _earnings_from_yf(sym, today)
+        except Exception as e:  # noqa: BLE001
+            log(f"WARN: {sym} の決算日を取得できませんでした: {e}")
+            d = None
+        time.sleep(REQUEST_SLEEP)
+        if d:
+            out[sym] = d
+        else:
+            unknown.append(sym)
+    return out, unknown
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +344,12 @@ def fetch_expiries(symbol: str, asof: date, max_dte: int = uo.MAX_DTE
 # まとめ
 # ---------------------------------------------------------------------------
 
+ETF_SYMBOLS = frozenset((
+    "SPY", "QQQ", "IWM", "DIA", "SMH", "XLK", "XLF", "XLE", "XLV",
+    "TQQQ", "GLD", "SLV", "USO", "TLT", "EEM", "EWJ", "HYG", "ARKK",
+))
+
+
 @dataclass
 class FetchReport:
     asof: Optional[date] = None
@@ -238,10 +357,12 @@ class FetchReport:
     no_bars: List[str] = None
     no_chain: List[str] = None
     earnings_blocked: List[str] = None
+    earnings_unknown: List[str] = None
     earnings_available: bool = True
 
     def __post_init__(self):
-        for f in ("ok", "no_bars", "no_chain", "earnings_blocked"):
+        for f in ("ok", "no_bars", "no_chain", "earnings_blocked",
+                  "earnings_unknown"):
             if getattr(self, f) is None:
                 setattr(self, f, [])
 
@@ -251,22 +372,29 @@ def load_universe(symbols: Sequence[str] = UNIVERSE,
                   holdings: Optional[List[str]] = None,
                   ) -> Tuple[List[uo.Underlying], FetchReport]:
     rep = FetchReport()
-    earnings = fetch_earnings_map()
-    rep.earnings_available = bool(earnings)
     held_set = set(holdings) if holdings is not None else None
 
+    bars_map = fetch_bars_many(symbols)
+    usable = [s for s in symbols if len(bars_map.get(s, [])) >= 60]
+    rep.no_bars = [s for s in symbols if s not in usable]
+
+    # ETFには決算が無い。常に「不明」になるので、決算で外す対象から除く。
+    earnings, unknown = fetch_earnings_map([s for s in usable if s not in ETF_SYMBOLS])
+    rep.earnings_available = bool(earnings)
+    rep.earnings_unknown = unknown
+
     out: List[uo.Underlying] = []
-    for sym in symbols:
-        bars = fetch_bars(sym)
-        if len(bars) < 60:
-            rep.no_bars.append(sym)
+    for sym in usable:
+        bars = bars_map[sym]
+        if bars[-1].close < uo.MIN_UNDERLYING:
+            continue
+        if sym in unknown:
+            # 決算日が分からない銘柄は、またぐかどうかを判定できないので外す。
             continue
         # 板の日付は日足の最終日に合わせる。両者がずれると乖離もIVもずれる。
         board_date = asof or date.fromisoformat(bars[-1].date)
         if rep.asof is None:
             rep.asof = board_date
-        if bars[-1].close < uo.MIN_UNDERLYING:
-            continue
         exps = fetch_expiries(sym, board_date)
         if not exps:
             rep.no_chain.append(sym)

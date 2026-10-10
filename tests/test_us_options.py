@@ -155,14 +155,22 @@ class TestExpirySelection(unittest.TestCase):
                              expiries=[flat_chain(100.0, d, 0.3) for d in dtes])
 
     def test_only_the_short_term_window(self):
-        u = self._u([1, 3, 10, 20, 40])
+        """短期の窓だけを採ること。境界は定数から引いて、値を変えても腐らせない。"""
+        dtes = [uo.MIN_DTE - 1, uo.MIN_DTE, uo.MAX_DTE, uo.MAX_DTE + 1,
+                uo.MAX_DTE + 20]
+        u = self._u(dtes)
         got = [e.dte(ASOF) for e in uo.usable_expiries(u, ASOF)]
-        self.assertEqual(got, [10, 20])
+        self.assertEqual(got, [uo.MIN_DTE, uo.MAX_DTE])
 
     def test_expiry_crossing_earnings_is_dropped(self):
         u = self._u([7, 14], earnings=(ASOF + timedelta(days=10)).isoformat())
         got = [e.dte(ASOF) for e in uo.usable_expiries(u, ASOF)]
         self.assertEqual(got, [7], "決算をまたぐ14日限月は残ってはいけない")
+
+    def test_horizon_matches_the_stated_couple_of_weeks(self):
+        """「数日〜2週間」と書いている以上、窓もそこに収まっていること。"""
+        self.assertGreaterEqual(uo.MIN_DTE, 3)
+        self.assertLessEqual(uo.MAX_DTE, 18)
 
     def test_earnings_after_every_expiry_blocks_nothing(self):
         u = self._u([7, 14], earnings=(ASOF + timedelta(days=60)).isoformat())

@@ -7,19 +7,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import us_fetch as uf, us_options as uo, us_report as ur
 
 syms = ("NVDA", "AAPL", "SPY", "QQQ", "TSLA", "AMD", "MU", "SMH")
-print("=== 決算カレンダー ===")
-em = uf.fetch_earnings_map()
-print("件数", len(em), "| 例:", {k: em[k] for k in list(em)[:5]})
+print("=== 日足（まとめ取得） ===")
+bars_map = uf.fetch_bars_many(syms)
+for s in syms:
+    bb = bars_map.get(s, [])
+    print(f"  {s}: {len(bb)}本 最終 {bb[-1].date if bb else '—'} "
+          f"終値 {bb[-1].close if bb else '—'}")
+
+print("\n=== 決算予定 ===")
+em, unknown = uf.fetch_earnings_map([s for s in syms if s not in uf.ETF_SYMBOLS])
+print("  判明", len(em), "不明", unknown)
 for s in syms:
     print(" ", s, em.get(s))
 
-print("\n=== 日足 ===")
-for s in syms[:3]:
-    b = uf.fetch_bars(s)
-    print(f"  {s}: {len(b)}本 最終 {b[-1].date if b else '—'} 終値 {b[-1].close if b else '—'}")
-
 print("\n=== 板 ===")
-b = uf.fetch_bars("NVDA")
+b = bars_map["NVDA"]
 asof = date.fromisoformat(b[-1].date)
 print("  基準日", asof)
 exps = uf.fetch_expiries("NVDA", asof)

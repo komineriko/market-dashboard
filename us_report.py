@@ -14,7 +14,6 @@ import us_indicators as ui
 import us_options as uo
 
 JST = timezone(timedelta(hours=9))
-ET = timezone(timedelta(hours=-4))      # レポート生成時刻の表示用（夏時間の別は出さない）
 
 STRATEGY_TITLES = {
     "long_call": "A. コール買い候補",
@@ -396,7 +395,9 @@ LIMITS = [
     "IVは気配のMIDから自前で逆算している（r=0、フォワードはプット・コール・"
     "パリティ）。データ提供元のIV列は流動性の薄い行で壊れるため使わない。",
     "GEXは建玉×ガンマからの簡易推定で、実際のディーラーのポジションではない。",
-    "決算日はデータ提供元の予定で、変更されることがある。",
+    "決算日はデータ提供元の予定で、変更されることがある。決算日が分からなかった"
+    "銘柄は、またぐかどうかを判定できないのでスクリーニング自体から外している"
+    "（ETFは決算が無いので対象外）。",
 ]
 
 
@@ -462,8 +463,8 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
     blocked = len(getattr(rep, "earnings_blocked", []) or [])
     sources = []
     if rep is not None:
-        sources.append(f"日足・決算予定: FMP（{asof.isoformat()} 時点）")
-        sources.append("オプション板: Yahoo Finance 経由のスナップショット")
+        sources.append(f"日足・オプション板・決算予定: Yahoo Finance"
+                       f"（{asof.isoformat()} の引け後のスナップショット）")
         if getattr(rep, "no_chain", None):
             sources.append("⚠ 板を取得できなかった銘柄: "
                            + "、".join(rep.no_chain[:12])
@@ -472,9 +473,13 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
             sources.append("⚠ 日足を取得できなかった銘柄: "
                            + "、".join(rep.no_bars[:12])
                            + ("…" if len(rep.no_bars) > 12 else ""))
+        unknown = getattr(rep, "earnings_unknown", None) or []
+        if unknown:
+            sources.append(
+                f"⚠ 決算日が分からず対象から外した銘柄 {len(unknown)}件: "
+                + "、".join(unknown[:12]) + ("…" if len(unknown) > 12 else ""))
         if not getattr(rep, "earnings_available", True):
-            sources.append("⚠ 決算予定を取得できなかったため、"
-                           "決算をまたぐ限月を除外できていない")
+            sources.append("⚠ 決算予定をひとつも取得できなかった")
 
     holdings_note = (
         "保有銘柄リスト（us_holdings.json）が無いため、カバードコールは"

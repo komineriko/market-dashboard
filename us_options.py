@@ -32,7 +32,7 @@ MIN_UNDERLYING = 10.0
 
 # --- 期間 -------------------------------------------------------------------
 MIN_DTE = 5                     # 数日〜2週間の取引を想定
-MAX_DTE = 21
+MAX_DTE = 16                    # 2週間＋数日。ここを広げれば月限も入る
 
 # --- 判定のしきい値 ---------------------------------------------------------
 TH_IV_CHEAP = 0.85              # IV ÷ MADボラ。これ以下で「買い有利」
@@ -654,7 +654,6 @@ def screen_covered_call(u: Underlying, asof: date, tech: Technicals,
                     "annual_pct": leg.price / u.spot * (365.0 / max(dte, 1)) * 100.0,
                     "called_return_pct": called,
                     "downside_buffer_pct": leg.price / u.spot * 100.0,
-                    "keep_pct": (1.0 - leg.delta) * 100.0,     # 権利行使されない目安
                     "atm_iv": iv, "iv_ratio": ratio,
                     "call_wall": gex.call_wall if gex else None,
                     "above_call_wall": (
