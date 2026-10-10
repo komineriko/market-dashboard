@@ -41,7 +41,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests yfinance
+        # テストはリポジトリ全体を回すので、日経225側が使う openpyxl /
+        # pdfplumber も要る。足りないとテストが import で落ちる。
+        run: pip install requests yfinance openpyxl pdfplumber
 
       - name: Run tests
         run: python -m unittest discover -s tests
