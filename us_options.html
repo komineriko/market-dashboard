@@ -71,7 +71,8 @@
   .sum .note{margin-top:12px;font-size:11.5px;color:var(--text-faint);line-height:1.7;}
 
   .tally{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 2px;}
-  .tally div{flex:1 1 150px;background:var(--bg-elevated);border:1px solid var(--card-border);
+  /* 直下の子だけ。div 全部に当てると中の数字と見出しまで枠がつく。 */
+  .tally > div{flex:1 1 150px;background:var(--bg-elevated);border:1px solid var(--card-border);
     border-radius:8px;padding:9px 12px;}
   .tally .n{font-size:19px;font-weight:700;}
   .tally .k{font-size:11px;color:var(--text-faint);margin-top:2px;}

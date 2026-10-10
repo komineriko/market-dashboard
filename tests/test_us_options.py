@@ -858,3 +858,27 @@ class TestUniverseProvenance(unittest.TestCase):
         blob = " ".join(out["meta"]["sources"])
         self.assertIn("us_universe.txt", blob)
         self.assertIn("395", blob)
+
+
+class TestPageTemplate(unittest.TestCase):
+    """ページの指定。見た目が壊れる書き方を入れないための歯止め。"""
+
+    def setUp(self):
+        with open(os.path.join(os.path.dirname(HERE_DIR), "us_options.html"),
+                  encoding="utf-8") as f:
+            self.html = f.read()
+
+    def test_tally_styles_only_its_direct_children(self):
+        """`.tally div` だと中の数字と見出しにも枠がつき、二重枠になる。"""
+        self.assertIn(".tally > div{", self.html)
+        self.assertNotIn(".tally div{", self.html)
+
+    def test_freshness_banner_is_rendered(self):
+        self.assertIn("function freshness(", self.html)
+        self.assertIn("freshness(m)", self.html)
+        self.assertIn("next_update_at", self.html)
+
+    def test_definitions_survive_printing(self):
+        """印刷時に details を display:none にすると定義がPDFから丸ごと落ちる。"""
+        self.assertIn("beforeprint", self.html)
+        self.assertNotIn("details{display:none;}", self.html.replace(" ", ""))
