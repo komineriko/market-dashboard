@@ -844,3 +844,17 @@ class TestStaleLastPrices(unittest.TestCase):
         f = uo.implied_forward(exp, 100.0, ASOF)
         iv = uo.atm_iv(exp, f, exp.t(ASOF))
         self.assertAlmostEqual(iv, 30.0, delta=2.0)
+
+
+class TestUniverseProvenance(unittest.TestCase):
+    """どの銘柄リストを使ったかがページに出ること。"""
+
+    def test_source_label_is_passed_through(self):
+        rep = uf.FetchReport()
+        rep.universe_source = "us_universe.txt（430銘柄）"
+        rep.universe_size = 430
+        rep.shortlisted = 395
+        out = ur.build_report([], ASOF, rep, None)
+        blob = " ".join(out["meta"]["sources"])
+        self.assertIn("us_universe.txt", blob)
+        self.assertIn("395", blob)

@@ -468,6 +468,7 @@ def load_universe(symbols: Sequence[str] = None,
                   asof: Optional[date] = None,
                   holdings: Optional[List[str]] = None,
                   cap: int = None,
+                  source: str = None,
                   ) -> Tuple[List[uo.Underlying], FetchReport]:
     """日足 → テクニカルで絞り込み → 決算 → 板、の順に取る。
 
@@ -476,11 +477,11 @@ def load_universe(symbols: Sequence[str] = None,
     """
     rep = FetchReport()
     if symbols is None:
-        symbols, source = load_universe_symbols()
-        rep.universe_source = source
+        symbols, auto = load_universe_symbols()
+        rep.universe_source = source or auto
     else:
         symbols = list(symbols)
-        rep.universe_source = f"指定の一覧（{len(symbols)}銘柄）"
+        rep.universe_source = source or f"指定の一覧（{len(symbols)}銘柄）"
     rep.universe_size = len(symbols)
     held_set = set(holdings) if holdings is not None else None
 

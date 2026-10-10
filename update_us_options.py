@@ -82,11 +82,12 @@ def main() -> int:
         asof = asof or date.fromisoformat(snap["asof"])
         rep = uf.FetchReport(asof=asof, ok=[u.symbol for u in unders])
     else:
-        syms, _src = uf.load_universe_symbols(args.universe)
+        syms, src = uf.load_universe_symbols(args.universe)
         if args.limit:
             syms = syms[:args.limit]
+            src = f"{src} の先頭 {len(syms)}銘柄"
         unders, rep = uf.load_universe(syms, asof=asof, holdings=holdings,
-                                       cap=args.max_chains)
+                                       cap=args.max_chains, source=src)
         asof = asof or rep.asof
         if not unders:
             print("板を1銘柄も取得できませんでした。", file=sys.stderr)
