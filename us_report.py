@@ -113,6 +113,7 @@ def _row_bull_put(c: uo.Candidate) -> Dict[str, Any]:
             _money(m.get("credit")),
             _money(m.get("max_loss")),
             _f(m.get("credit_ratio")),
+            _f(m.get("per_day_pct"), 1, "%"),
             f"{_f(m.get('breakeven'))}（-{abs(m.get('cushion_pct') or 0):.1f}%）",
             _f(m.get("pop"), 0, "%"),
             _f(m.get("iv_ratio")),
@@ -199,6 +200,7 @@ def _row_bear_call(c: uo.Candidate) -> Dict[str, Any]:
             _money(m.get("credit")),
             _money(m.get("max_loss")),
             _f(m.get("credit_ratio")),
+            _f(m.get("per_day_pct"), 1, "%"),
             f"{_f(m.get('breakeven'))}（+{abs(m.get('cushion_pct') or 0):.1f}%）",
             _f(m.get("pop"), 0, "%"),
             _f(m.get("iv_ratio")),
@@ -238,7 +240,7 @@ SECTION_SPEC = {
         _row_long_call,
     ),
     "bull_put": (
-        ["満期（残）", "売る", "買う", "受取", "最大損失", "受取÷損失",
+        ["満期（残）", "売る", "買う", "受取", "最大損失", "受取÷損失", "1日あたり",
          "損益分岐（余裕）", "勝率目安", "IV/MAD"],
         _row_bull_put,
     ),
@@ -258,7 +260,7 @@ SECTION_SPEC = {
         _row_long_put,
     ),
     "bear_call": (
-        ["満期（残）", "売る", "買う", "受取", "最大損失", "受取÷損失",
+        ["満期（残）", "売る", "買う", "受取", "最大損失", "受取÷損失", "1日あたり",
          "損益分岐（余裕）", "勝率目安", "IV/MAD"],
         _row_bear_call,
     ),
@@ -555,6 +557,14 @@ DEFINITIONS = [
      "現在のMIDを起点に、株価が動いた分のBlack-Scholes理論値の差を足したもの。"
      "IVと残存日数は現在のままと仮定している（実際は上昇時にIVが下がりやすく、"
      "日数がかかれば時間価値も減るので、上限寄りの目安）。手数料は含まない。"),
+    ("並べ方",
+     "満期までの長さが違う候補を同じ表に並べるので、順位は期間で正規化している。"
+     "クレジットスプレッドは「受取÷最大損失 ÷ 残存日数」（表の1日あたり）、"
+     "カバードコールとP売りは年率。スプレッドを年率換算すると7日物で"
+     "1700%などと出て数字が独り歩きするので、1日あたりで出している。素の受取額や"
+     "「コール時の総リターン」で並べると、残存の長い限月が必ず上に来て"
+     "短いものが押し出されてしまう。コール買い・プット買いは伸びしろで"
+     "並べており、こちらは短いほうが有利に出るので正規化していない。"),
     ("勝率目安",
      "1 − |Δ|。満期時点で権利行使されない確率のリスク中立での近似であり、"
      "実際の勝率ではない。"),
@@ -610,7 +620,9 @@ def build_report(underlyings: Sequence[uo.Underlying], asof: date,
         tech, found = uo.screen_symbol(u, asof)
         for e in u.expiries:
             contracts += sum(1 for r in e.rows for q in (r.call, r.put) if q.oi > 0)
-            if e.expiry not in expiry_labels and uo.MIN_DTE <= e.dte(asof) <= uo.MAX_DTE:
+            if e.expiry in expiry_labels:
+                continue
+            if uo.in_screen_window(e.dte(asof), date.fromisoformat(e.expiry)):
                 expiry_labels.append(e.expiry)
         for key, cands in found.items():
             buckets[key].extend(cands)

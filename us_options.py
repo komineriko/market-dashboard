@@ -740,13 +740,16 @@ def screen_bull_put(u: Underlying, asof: date, tech: Technicals,
                         "width": width,
                         "max_loss": max_loss * MULTIPLIER,
                         "credit_ratio": cr,
+                        # 年率換算にすると7日物で1700%などと出て数字が独り歩き
+                        # する。並び順は同じなので、1日あたりで持つ。
+                        "per_day_pct": cr / max(dte, 1) * 100.0,
                         "breakeven": be,
                         "cushion_pct": (u.spot - be) / u.spot * 100.0,
                         "pop": (1.0 - abs(short.delta)) * 100.0,
                         "atm_iv": iv, "iv_ratio": ratio,
                         "put_wall": gex.put_wall if gex else None,
                     },
-                    rank=cr,
+                    rank=cr / max(dte, 1),
                 ))
     out.sort(key=lambda c: c.rank, reverse=True)
     return out[:per_symbol]
@@ -848,7 +851,9 @@ def screen_covered_call(u: Underlying, asof: date, tech: Technicals,
                         None if not gex or gex.call_wall is None
                         else leg.strike >= gex.call_wall),
                 },
-                rank=called,
+                # 期間で正規化して並べる。コール時の総リターンで並べると
+                # 残存の長い限月が必ず上に来て、短いものが押し出される。
+                rank=leg.price / u.spot * (365.0 / max(dte, 1)) * 100.0,
             ))
     out.sort(key=lambda c: c.rank, reverse=True)
     return out[:per_symbol]
@@ -984,13 +989,16 @@ def screen_bear_call(u: Underlying, asof: date, tech: Technicals,
                         "width": width,
                         "max_loss": max_loss * MULTIPLIER,
                         "credit_ratio": cr,
+                        # 年率換算にすると7日物で1700%などと出て数字が独り歩き
+                        # する。並び順は同じなので、1日あたりで持つ。
+                        "per_day_pct": cr / max(dte, 1) * 100.0,
                         "breakeven": be,
                         "cushion_pct": (be - u.spot) / u.spot * 100.0,
                         "pop": (1.0 - abs(short.delta)) * 100.0,
                         "atm_iv": iv, "iv_ratio": ratio,
                         "call_wall": gex.call_wall if gex else None,
                     },
-                    rank=cr,
+                    rank=cr / max(dte, 1),
                 ))
     out.sort(key=lambda c: c.rank, reverse=True)
     return out[:per_symbol]

@@ -1196,3 +1196,83 @@ class TestMonthlyExpiryWindow(unittest.TestCase):
         self.assertIn("2026-11-20", got, "月限が落ちている")
         self.assertNotIn("2026-11-13", got, "月限でない25日物は採ってはいけない")
         self.assertIn("2026-10-26", got)
+
+
+class TestRankingIsTimeNormalised(unittest.TestCase):
+    """満期の長さが違う候補を同じ表に並べるので、順位は期間で正規化する。
+
+    月限（最長42日）を入れたことで残存の幅が5〜42日に広がった。素の受取額や
+    「コール時の総リターン」で並べると、長い限月が必ず上に来て短いものが
+    押し出される（実データでカバコの8行中4行が42日物になった）。
+    """
+
+    def _pair(self, strategy, short_dte, long_dte, iv=0.45, dev_atr=2.0,
+              finish=4):
+        """同じ銘柄で残存だけ違う2本を作り、どちらが上に来るか見る。
+
+        乖離を決め打ちで作れる合成データを使う。乱数任せだと条件に
+        当たらず、テストが黙ってスキップされてしまう。
+        """
+        import us_demo as dm
+        bars = dm._bars_at(5, 160, 120.0, 0.013, dev_atr, finish)
+        spot = bars[-1].close
+        u = uo.Underlying(symbol="X", bars=bars, held=True, expiries=[
+            dm._chain(spot, ASOF, short_dte, iv, 2.5, oi=9000),
+            dm._chain(spot, ASOF, long_dte, iv, 2.5, oi=9000),
+        ])
+        _, found = uo.screen_symbol(u, ASOF)
+        return found[strategy]
+
+    def test_covered_call_prefers_the_higher_annualised(self):
+        got = self._pair("covered_call", 7, 42, iv=0.5, dev_atr=2.6)
+        self.assertTrue(got, "カバコの候補が出ない設定ではテストにならない")
+        best = got[0]
+        self.assertAlmostEqual(best.rank, best.metrics["annual_pct"], places=6,
+                               msg="カバコは年率で並べること")
+
+    def test_credit_spreads_expose_an_annualised_figure(self):
+        seen = 0
+        for strategy, dev, finish in (("bull_put", 1.1, 4),
+                                      ("bear_call", -1.0, -4)):
+            for dte_pair in ((7, 42), (5, 35)):
+                for c in self._pair(strategy, *dte_pair, iv=0.46,
+                                    dev_atr=dev, finish=finish):
+                    seen += 1
+                    m = c.metrics
+                    self.assertIn("per_day_pct", m,
+                                  f"{strategy} に1日あたりの値が無い")
+                    self.assertAlmostEqual(
+                        m["per_day_pct"],
+                        m["credit_ratio"] / c.dte * 100.0, places=6)
+                    self.assertAlmostEqual(c.rank, m["per_day_pct"] / 100.0,
+                                           places=6,
+                                           msg=f"{strategy} は1日あたりで並べること")
+                    self.assertLess(m["per_day_pct"], 100.0,
+                                    "1日あたりが100%を超えるのは計算違い")
+        self.assertGreater(seen, 0, "スプレッドの候補が1つも出ずテストにならない")
+
+    def test_long_call_is_not_normalised(self):
+        """伸びしろは短いほうが有利に出るので、期間で割る必要はない。"""
+        got = self._pair("long_call", 7, 42, iv=0.18, dev_atr=1.4)
+        self.assertTrue(got, "コール買いの候補が出ない設定ではテストにならない")
+        for c in got:
+            self.assertAlmostEqual(c.rank, c.metrics["upside_pct"], places=6)
+
+
+class TestHeaderExpiryList(unittest.TestCase):
+
+    def test_header_lists_the_monthly_too(self):
+        """見出しの「対象満期」が候補の満期と食い違わないこと。"""
+        asof = date(2026, 10, 9)
+        bars = [ui.Bar(f"2026-08-{(i % 28) + 1:02d}", 101, 99, 100.0, 1e6)
+                for i in range(80)]
+        u = uo.Underlying(symbol="X", bars=bars, expiries=[
+            uo.Expiry(expiry="2026-10-16", rows=flat_chain(100.0, 7, 0.3).rows),
+            uo.Expiry(expiry="2026-11-06", rows=flat_chain(100.0, 28, 0.3).rows),
+            uo.Expiry(expiry="2026-11-20", rows=flat_chain(100.0, 42, 0.3).rows),
+        ])
+        rep = ur.build_report([u], asof, uf.FetchReport(asof=asof), None)
+        got = rep["meta"]["expiries"]
+        self.assertIn("2026-11-20", got, "月限が見出しから抜けている")
+        self.assertIn("2026-10-16", got)
+        self.assertNotIn("2026-11-06", got, "月限でない28日物は対象外")
