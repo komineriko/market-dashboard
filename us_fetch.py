@@ -560,9 +560,15 @@ def _attach_back_expiries(unders: List[uo.Underlying], board_date: date,
         eligible.append((dollar_volume(u.bars), u))
     eligible.sort(key=lambda x: x[0], reverse=True)
     for _, u in eligible[:cap]:
-        u.back_expiries = fetch_expiries(u.symbol, board_date,
-                                         max_dte=uo.CAL_BACK_MAX_DTE,
-                                         min_dte=uo.CAL_BACK_MIN_DTE)
+        # 手前の取得が MONTHLY_MAX_DTE まで伸びているので、その範囲は取り直さない。
+        have = [e for e in u.expiries
+                if uo.CAL_BACK_MIN_DTE <= e.dte(board_date) <= uo.CAL_BACK_MAX_DTE]
+        extra = []
+        if uo.CAL_BACK_MAX_DTE > uo.MONTHLY_MAX_DTE:
+            extra = fetch_expiries(u.symbol, board_date,
+                                   max_dte=uo.CAL_BACK_MAX_DTE,
+                                   min_dte=uo.MONTHLY_MAX_DTE + 1)
+        u.back_expiries = have + extra
         if u.back_expiries:
             rep.calendar_fetched += 1
     log(f"カレンダーの後ろ足: {rep.calendar_fetched}銘柄")

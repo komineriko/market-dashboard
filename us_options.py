@@ -37,7 +37,11 @@ MAX_DTE = 16                    # 週次の窓。2週間＋数日
 # 月限（第3金曜）だけはこの距離まで通す。月限は直後に当たると次が35日先に
 # なるので、週次の窓を広げる形だと入る日と入らない日ができてしまう。
 # 建玉はたいてい月限がいちばん厚いので、常に1本は候補に入るようにする。
-MONTHLY_MAX_DTE = 37
+#
+# 42日なのは、当月の月限が MIN_DTE の手前（4日後など）に来る日があるため。
+# そのとき次の月限は 4 + 35 = 39日後まで離れうるので、37日では
+# どちらも窓に入らない日が月に数日できてしまう（実際に踏んだ）。
+MONTHLY_MAX_DTE = 42
 
 # --- 判定のしきい値 ---------------------------------------------------------
 TH_IV_CHEAP = 0.85              # IV ÷ MADボラ。これ以下で「買い有利」
@@ -538,16 +542,14 @@ def in_screen_window(dte: int, expiry: date) -> bool:
 
 
 def in_fetch_window(dte: int, expiry: date) -> bool:
-    """板を取りに行く満期か。
+    """板を取りに行く満期か。月限の距離まで全部取る。
 
-    MIN_DTE より手前も取る。ウォールを「その満期までの全満期を合算」で
-    出すので、当週の建玉を落とすと壁が実勢より薄く出るため。
+    候補に採るのは週次 MAX_DTE まで・月限 MONTHLY_MAX_DTE までだが、
+    取得はその間の週次も含めて全部やる。ウォールは「その満期までの
+    全満期を合算」で出しているので、間を抜くと月限の候補だけ
+    合算から17〜30日ぶんが落ちて、壁が実勢より薄く出てしまう。
     """
-    if dte < 0:
-        return False
-    if dte <= MAX_DTE:
-        return True
-    return dte <= MONTHLY_MAX_DTE and is_monthly(expiry)
+    return 0 <= dte <= MONTHLY_MAX_DTE
 
 
 def _crosses_earnings(u: Underlying, asof: date, expiry: str) -> bool:

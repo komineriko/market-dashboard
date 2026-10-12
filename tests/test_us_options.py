@@ -1142,27 +1142,43 @@ class TestMonthlyExpiryWindow(unittest.TestCase):
             self.assertFalse(uo.in_screen_window(dte, d),
                              f"{d} は月限ではないので採ってはいけない")
 
-    def test_the_next_monthly_is_always_reachable(self):
-        """どの日を基準にしても、次の月限が窓に入ること。"""
-        d = date(2026, 1, 1)
-        while d < date(2027, 1, 1):
-            nxt = uo.third_friday(d.year, d.month)
-            if nxt < d:
-                y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
-                nxt = uo.third_friday(y, m)
-            dte = (nxt - d).days
-            if dte >= uo.MIN_DTE:
-                self.assertTrue(uo.in_screen_window(dte, nxt),
-                                f"{d} から見た月限 {nxt}（{dte}日）が窓に入らない")
-            d += timedelta(days=1)
+    def test_a_monthly_is_always_reachable(self):
+        """どの日を基準にしても、窓のなかに月限が1本はあること。
 
-    def test_fetch_window_also_keeps_the_near_expiries(self):
-        """ウォールの合算に使うので、MIN_DTE より手前も取る。"""
+        当月の月限が MIN_DTE の手前に来る日があり、そのとき次の月限は
+        39日後まで離れうる。「次の月限」だけを見て MIN_DTE 未満を読み飛ばすと
+        この穴を見落とす（最初 37日にしていて実際に踏んだ）。
+        """
+        d = date(2026, 1, 1)
+        worst = 0
+        while d < date(2028, 1, 1):
+            found = None
+            for ahead in range(uo.MIN_DTE, uo.MONTHLY_MAX_DTE + 1):
+                cand = d + timedelta(days=ahead)
+                if uo.is_monthly(cand) and uo.in_screen_window(ahead, cand):
+                    found = ahead
+                    break
+            self.assertIsNotNone(found, f"{d} から見て窓に月限が1本も無い")
+            worst = max(worst, found)
+            d += timedelta(days=1)
+        self.assertLessEqual(worst, uo.MONTHLY_MAX_DTE)
+
+    def test_fetch_window_takes_everything_up_to_the_monthly(self):
+        """取得は間の週次も含めて全部。抜くと月限の候補でウォールが薄く出る。"""
         base = date(2026, 10, 19)
         self.assertTrue(uo.in_fetch_window(1, base + timedelta(days=1)))
         self.assertFalse(uo.in_fetch_window(-1, base - timedelta(days=1)))
-        self.assertTrue(uo.in_fetch_window(32, date(2026, 11, 20)))
-        self.assertFalse(uo.in_fetch_window(38, base + timedelta(days=38)))
+        self.assertTrue(uo.in_fetch_window(uo.MONTHLY_MAX_DTE,
+                                           base + timedelta(days=uo.MONTHLY_MAX_DTE)))
+        self.assertFalse(uo.in_fetch_window(uo.MONTHLY_MAX_DTE + 1,
+                                            base + timedelta(days=uo.MONTHLY_MAX_DTE + 1)))
+        for dte in (17, 21, 25, 28, 35):
+            d = base + timedelta(days=dte)
+            self.assertTrue(uo.in_fetch_window(dte, d),
+                            f"{d}（{dte}日）を取らないとウォールの合算に穴があく")
+            if not uo.is_monthly(d):
+                self.assertFalse(uo.in_screen_window(dte, d),
+                                 "取得はしても候補には採らない")
 
     def test_usable_expiries_picks_up_a_distant_monthly(self):
         asof = date(2026, 10, 19)
