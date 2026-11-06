@@ -30,6 +30,8 @@ from datetime import datetime, timezone, timedelta
 
 import requests
 
+import morning_check
+
 API_KEY = os.environ.get("FMP_API_KEY")
 if not API_KEY:
     print("ERROR: 環境変数 FMP_API_KEY が設定されていません。", file=sys.stderr)
@@ -237,6 +239,16 @@ def fetch_treasury_10y():
         return None, None
     latest = rows[0]
     return latest.get("year10"), latest.get("date")
+
+
+def fetch_treasury_rows():
+    """朝チェック用: treasury-rates の行(2年・10年を含む)をそのまま返す。失敗時は空リスト。"""
+    try:
+        rows = _get("treasury-rates", {})
+    except requests.exceptions.HTTPError as e:
+        print(f"WARN: treasury-ratesの取得に失敗: {e}", file=sys.stderr)
+        return []
+    return rows if isinstance(rows, list) else []
 
 
 def fetch_alpaca_news(limit=5, symbols=None):
@@ -751,6 +763,22 @@ def main():
                     "recent": rel_recent, "prior": rel_prior, "quadrant": quadrant,
                 })
 
+    # ---- 朝チェック(日経225・VIX・債券・カレンダー) ----
+    morning = None
+    try:
+        n_rows, n_src = morning_check.fetch_nikkei_ohlc()
+        if not n_rows:
+            fmp_series = fetch_eod_series("^N225", days=800)
+            n_rows = morning_check.rows_from_close_series(fmp_series)
+            n_src = "FMP ^N225（終値のみ。始値・高値は不明）" if n_rows else None
+        vix_info = None
+        vix_idx = next((i for i in indices if i["symbol"] == "^VIX"), None)
+        if vix_idx:
+            vix_info = {"value": vix_idx["price"], "pct": vix_idx["pct"], "source": "FMP ^VIX（終値）"}
+        morning = morning_check.build_morning_check(n_rows, n_src, vix_info, fetch_treasury_rows())
+    except Exception as e:  # noqa: BLE001 - 朝チェックが失敗しても他の更新は止めない
+        print(f"WARN: 朝チェックデータの作成に失敗: {e}", file=sys.stderr)
+
     data = {
         "fetchedAt": fetched_at,
         "indices": indices,
@@ -764,6 +792,7 @@ def main():
         "universes": universes,
         "marketBreadth": market_breadth,
         "sectorRotation": sector_rotation,
+        "morningCheck": morning,
     }
 
     js_block = (

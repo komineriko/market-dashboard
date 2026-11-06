@@ -248,6 +248,62 @@
     .chart-box .tvbox{height:480px;}
     .app{padding:16px 10px 96px;}
   }
+
+  /* ---- 朝チェック ---- */
+  .mc-banner{border-radius:14px;padding:16px 18px;margin-bottom:14px;border:1px solid var(--card-border);background:var(--card);}
+  .mc-banner .mc-b-title{font-size:20px;font-weight:800;line-height:1.4;}
+  .mc-banner .mc-b-sub{font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.7;}
+  .mc-banner.sev-allexit{border-color:var(--down);background:var(--down-bg);}
+  .mc-banner.sev-exit{border-color:var(--down);background:var(--down-bg);}
+  .mc-banner.sev-reduce{border-color:var(--warn);background:rgba(245,185,66,0.12);}
+  .mc-banner.sev-none{border-color:var(--up);background:var(--up-bg);}
+  .mc-banner.sev-unknown{border-color:var(--text-faint);}
+  .mc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+  .mc-cell{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:11px 12px;}
+  .mc-cell .name{font-size:11px;color:var(--text-dim);margin-bottom:5px;}
+  .mc-cell .val{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .mc-cell .sub{font-size:10.5px;color:var(--text-faint);margin-top:4px;line-height:1.5;}
+  .mc-cell.unk .val{color:var(--text-faint);font-size:15px;}
+  .mc-inputs{background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:14px;margin-bottom:14px;}
+  .mc-inputs .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .mc-inputs .row:last-child{margin-bottom:0;}
+  .mc-inputs label{flex:0 0 150px;font-size:12.5px;color:var(--text);}
+  .mc-inputs input[type=number],.mc-inputs select{
+    width:110px;background:var(--bg-elevated);border:1px solid var(--card-border);color:var(--text);
+    border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;outline:none;}
+  .mc-inputs input:focus,.mc-inputs select:focus{border-color:var(--accent);}
+  .mc-inputs .when{font-size:11px;color:var(--text-faint);}
+  .mc-inputs .clr{background:none;border:1px solid var(--card-border);color:var(--text-dim);border-radius:8px;padding:6px 10px;font-size:11.5px;cursor:pointer;font-family:inherit;}
+  .mc-rules{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
+  .mc-rule{background:var(--card);border:1px solid var(--card-border);border-left-width:5px;border-radius:12px;padding:12px 14px;}
+  .mc-rule .head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .mc-rule .ttl{font-size:13.5px;font-weight:700;line-height:1.5;}
+  .mc-rule .tag{flex:0 0 auto;font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:999px;white-space:nowrap;}
+  .mc-rule .rule{font-size:11.5px;color:var(--text-dim);margin-top:5px;line-height:1.6;}
+  .mc-rule .detail{font-size:12px;margin-top:6px;line-height:1.7;font-variant-numeric:tabular-nums;}
+  .mc-rule.st-hit{border-left-color:var(--down);}
+  .mc-rule.st-hit .tag{background:var(--down-bg);color:var(--down);}
+  .mc-rule.st-warn{border-left-color:var(--warn);}
+  .mc-rule.st-warn .tag{background:rgba(245,185,66,0.15);color:var(--warn);}
+  .mc-rule.st-buy{border-left-color:var(--accent);}
+  .mc-rule.st-buy .tag{background:var(--accent-soft);color:var(--accent);}
+  .mc-rule.st-ok{border-left-color:var(--up);}
+  .mc-rule.st-ok .tag{background:var(--up-bg);color:var(--up);}
+  .mc-rule.st-unknown{border-left-color:var(--text-faint);}
+  .mc-rule.st-unknown .tag{background:#1d2330;color:var(--text-dim);}
+  .mc-rule.st-info{border-left-color:var(--card-border);}
+  .mc-rule.st-info .tag{background:#1d2330;color:var(--text-dim);}
+  .mc-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;margin-bottom:14px;}
+  .mc-table th,.mc-table td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--card-border);}
+  .mc-table th:first-child,.mc-table td:first-child{text-align:left;}
+  .mc-table th{color:var(--text-dim);font-weight:600;}
+  .mc-notes{background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:14px 16px;font-size:12px;line-height:1.8;color:var(--text-dim);}
+  .mc-notes b{color:var(--text);}
+  .mc-notes ul{margin:6px 0 0;padding-left:18px;}
+  @media (max-width:700px){
+    .mc-grid{grid-template-columns:repeat(2,1fr);}
+    .mc-inputs label{flex-basis:100%;}
+  }
 </style>
 </head>
 <body>
@@ -263,7 +319,27 @@
   </header>
 
   <!-- 1. サマリー -->
-  <section class="tabpanel active" id="tab-summary">
+  <!-- 0. 朝チェック -->
+  <section class="tabpanel active" id="tab-morning">
+    <div class="mc-banner sev-unknown" id="mcBanner"></div>
+
+    <div class="section-title">確認する数字（日経VI・VIX・PC ratio・日経PC ratio・債券）</div>
+    <div class="mc-grid" id="mcGrid"></div>
+
+    <div class="section-title">手入力（自動で取れない数字。このブラウザにだけ保存されます）</div>
+    <div class="mc-inputs" id="mcInputs"></div>
+
+    <div class="section-title">ルール判定</div>
+    <div class="mc-rules" id="mcRules"></div>
+
+    <div class="section-title">日経225 直近の値動き</div>
+    <div id="mcNikkeiTable"></div>
+
+    <div class="section-title">判定の前提と、定義が複数あるもの</div>
+    <div class="mc-notes" id="mcNotes"></div>
+  </section>
+
+  <section class="tabpanel" id="tab-summary">
     <div class="section-title">主要指数</div>
     <div class="index-grid" id="indexGrid"></div>
 
@@ -352,7 +428,8 @@
 </div>
 
 <nav class="tabbar" id="tabbar">
-  <button data-tab="summary" class="active"><span class="ic">📊</span><span class="lb">サマリー</span></button>
+  <button data-tab="morning" class="active"><span class="ic">🌅</span><span class="lb">朝チェック</span></button>
+  <button data-tab="summary"><span class="ic">📊</span><span class="lb">サマリー</span></button>
   <button data-tab="heatmap"><span class="ic">🗺️</span><span class="lb">ヒートマップ</span></button>
   <button data-tab="sector"><span class="ic">🏭</span><span class="lb">セクター</span></button>
   <button data-tab="news"><span class="ic">📰</span><span class="lb">ニュース</span></button>
@@ -1417,8 +1494,8 @@ function addTickerFromInput(){
   renderCharts();
 }
 
-/* ---- タブ切り替え（クリック＋数字キー1〜5） ---- */
-const TAB_ORDER = ['summary','heatmap','sector','news','chart'];
+/* ---- タブ切り替え（クリック＋数字キー1〜6） ---- */
+const TAB_ORDER = ['morning','summary','heatmap','sector','news','chart'];
 function switchTab(name){
   TAB_ORDER.forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('active', t===name);
@@ -1433,7 +1510,7 @@ document.querySelectorAll('#tabbar button').forEach(b=>{
 document.addEventListener('keydown', (e)=>{
   if(document.activeElement && document.activeElement.tagName==='INPUT') return;
   const idx = parseInt(e.key,10);
-  if(idx>=1 && idx<=5){ switchTab(TAB_ORDER[idx-1]); }
+  if(idx>=1 && idx<=TAB_ORDER.length){ switchTab(TAB_ORDER[idx-1]); }
 });
 
 /* ---- 初期化 ---- */
@@ -1482,6 +1559,331 @@ renderSectors();
 renderRotation();
 renderNewsOrFallback();
 renderCharts();
+
+/* ===MORNING_START=== */
+/* 朝チェック: 判定ロジック（DOMに触れない純粋関数）と描画 */
+const MC = {
+  T:{ moveYen:1000, credit:3.0, pcr1:1.0, pcr2:1.2, vix1:40, vix2:60, dd1:-10, dd2:-20, niVi:40 },
+  STALE_DAYS:3,
+};
+const mcPad = n => String(n).padStart(2,'0');
+function mcEsc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function mcAdd(iso,n){ const d=new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function mcDow(iso){ return new Date(iso+'T00:00:00Z').getUTCDay(); }
+function mcDiffDays(a,b){ return Math.round((new Date(a+'T00:00:00Z')-new Date(b+'T00:00:00Z'))/86400000); }
+function mcIsBiz(iso,hol){ const w=mcDow(iso); return w!==0 && w!==6 && !hol.has(iso); }
+function mcNextBiz(iso,hol){ let d=iso; while(!mcIsBiz(d,hol)) d=mcAdd(d,1); return d; }
+function mcPrevBiz(iso,hol){ let d=mcAdd(iso,-1); while(!mcIsBiz(d,hol)) d=mcAdd(d,-1); return d; }
+function mcBizDaysOfMonth(y,m,hol){
+  const out=[]; let d=`${y}-${mcPad(m)}-01`;
+  while(d.slice(5,7)===mcPad(m)){ if(mcIsBiz(d,hol)) out.push(d); d=mcAdd(d,1); }
+  return out;
+}
+function mcMsqDate(y,m,hol){          // 第2金曜日。休場日なら前営業日
+  let d=`${y}-${mcPad(m)}-01`, n=0;
+  for(;;){ if(mcDow(d)===5){ n++; if(n===2) break; } d=mcAdd(d,1); }
+  return mcIsBiz(d,hol) ? d : mcPrevBiz(d,hol);
+}
+function mcNextMsq(fromIso,hol){       // fromIso 以降で最初のMSQ（3・6・9・12月）
+  let y=+fromIso.slice(0,4);
+  for(let k=0;k<3;k++,y++){
+    for(const m of [3,6,9,12]){ const d=mcMsqDate(y,m,hol); if(d>=fromIso) return d; }
+  }
+  return null;
+}
+function mcFmt(v,nd=2){ return (v===null||v===undefined||Number.isNaN(v)) ? null : Number(v).toLocaleString('ja-JP',{minimumFractionDigits:nd,maximumFractionDigits:nd}); }
+function mcInput(inputs,key,todayIso){   // 手入力値。古すぎる(STALE_DAYS超)ものは使わない
+  const x=inputs && inputs[key];
+  if(!x || x.v===null || x.v===undefined || x.v==='') return {v:null, d:null, stale:false};
+  const stale = x.d ? mcDiffDays(todayIso,x.d) > MC.STALE_DAYS : true;
+  return {v:x.v, d:x.d||null, stale};
+}
+
+function evaluateMorning(mc, inputs, todayIso){
+  const T = MC.T;
+  const hol = new Set((mc && mc.calendar && mc.calendar.holidays) || []);
+  const holKnown = !!(mc && mc.calendar && mc.calendar.holidaysKnown);
+  const target = mcNextBiz(todayIso, hol);
+  const expectPrev = mcPrevBiz(target, hol);        // 直近で終わっているはずの日本の営業日
+  const nk = mc && mc.nikkei;
+  const rows = (nk && nk.recent) || [];
+  const last = rows.length ? rows[rows.length-1] : null;
+  const rules = [];
+  const warnings = [];
+
+  if(!nk) warnings.push('日経225のデータを取得できていません。日経に関する判定はすべて「不明」です。');
+  else if(nk.periodTo < expectPrev) warnings.push(`日経225の最新データは ${nk.periodTo} 分です（直近の営業日 ${expectPrev} より古い可能性があります）。`);
+  if(!holKnown) warnings.push('祝日の情報が無いため、営業日は土日のみで判定しています（月末月初・MSQの日付がずれる可能性があります）。');
+
+  /* 手入力・自動値の集約 */
+  const geo = mcInput(inputs,'geo',todayIso);
+  const niViM = mcInput(inputs,'niVi',todayIso), pcUS = mcInput(inputs,'pcUS',todayIso), pcJP = mcInput(inputs,'pcJP',todayIso);
+  let niVi = null, niViSrc = null;
+  if(niViM.v!==null && !niViM.stale){ niVi = Number(niViM.v); niViSrc = `手入力（${niViM.d}）`; }
+  else if(mc && mc.nikkeiVi){ niVi = mc.nikkeiVi.value; niViSrc = `${mc.nikkeiVi.source}（${mc.nikkeiVi.date}）`; }
+  const vix = mc && mc.vix ? mc.vix.value : null;
+  const pcUSv = (pcUS.v!==null && !pcUS.stale) ? Number(pcUS.v) : null;
+  const pcJPv = (pcJP.v!==null && !pcJP.stale) ? Number(pcJP.v) : null;
+  const spread = mc && mc.credit ? mc.credit.spread : null;
+
+  /* 1. 日経が1日1000円以上動いた → ポジション縮小を検討 */
+  if(last){
+    const hit = Math.abs(last.chg) >= T.moveYen;
+    rules.push({id:'move', action:'reduce', title:'日経が1日1000円以上動いた',
+      rule:'日経225の前日比（終値ベース）が±1,000円以上 → ポジション縮小を検討',
+      status: hit?'warn':'ok', tag: hit?'縮小を検討':'未発動',
+      detail:`${last.date}：終値 ${mcFmt(last.c,0)}円、前日比 ${last.chg>0?'+':''}${mcFmt(last.chg,0)}円`
+        + (last.range!==null ? `（参考：日中値幅 ${mcFmt(last.range,0)}円）` : '')});
+  } else rules.push({id:'move', action:'reduce', title:'日経が1日1000円以上動いた', rule:'日経225の前日比が±1,000円以上 → ポジション縮小を検討',
+      status:'unknown', tag:'不明', detail:'日経225のデータが取得できていません。'});
+
+  /* 2a. 地政学リスク（手入力のみ） */
+  if(geo.v==='yes' || geo.v==='no'){
+    if(geo.stale) rules.push({id:'geo', action:'exit', title:'地政学リスク', rule:'地政学リスクがある → 撤退',
+      status:'unknown', tag:'不明', detail:`最後の入力は ${geo.d} で古いため使っていません。今日の状況を入力してください。`});
+    else rules.push({id:'geo', action:'exit', title:'地政学リスク', rule:'地政学リスクがある → 撤退',
+      status: geo.v==='yes'?'hit':'ok', tag: geo.v==='yes'?'撤退':'なし（手入力）', detail:`手入力：${geo.v==='yes'?'あり':'なし'}（${geo.d}）`});
+  } else rules.push({id:'geo', action:'exit', title:'地政学リスク', rule:'地政学リスクがある → 撤退',
+      status:'unknown', tag:'不明', detail:'自動で判定できる情報源がありません。上の手入力欄で「あり／なし」を選んでください。'});
+
+  /* 2b. 月末月初 */
+  const edgeN = Math.min(3, Math.max(1, parseInt((inputs && inputs.edge) || 1, 10) || 1));
+  const ty = +target.slice(0,4), tm = +target.slice(5,7);
+  const biz = mcBizDaysOfMonth(ty,tm,hol);
+  const iFirst = biz.indexOf(target), iLast = biz.length-1-iFirst;
+  const isStart = iFirst>=0 && iFirst < edgeN, isEnd = iFirst>=0 && iLast < edgeN;
+  rules.push({id:'edge', action:'exit', title:'月末・月初', rule:`対象日が月初の最初の${edgeN}営業日、または月末の最後の${edgeN}営業日 → 撤退`,
+    status:(isStart||isEnd)?'hit':'ok', tag:(isStart||isEnd)?'撤退':'未発動',
+    detail:`対象日 ${target}：今月の第${iFirst+1}営業日（月末から数えて${iLast+1}番目）`});
+
+  /* 2c. MSQ */
+  const msqThis = [3,6,9,12].includes(tm) ? mcMsqDate(ty,tm,hol) : null;
+  const msqNext = mcNextMsq(target,hol);
+  const isMsq = msqThis===target;
+  rules.push({id:'msq', action:'exit', title:'MSQ（メジャーSQ）', rule:'対象日がMSQ（3・6・9・12月の第2金曜日。休場なら前営業日） → 撤退',
+    status:isMsq?'hit':'ok', tag:isMsq?'撤退':'未発動',
+    detail:`次のMSQ：${msqNext}（対象日の${mcDiffDays(msqNext,target)}日後）`});
+
+  /* 3. BAA債とAAA債の差が3%以上 */
+  if(spread!==null){
+    const hit = spread >= T.credit;
+    rules.push({id:'credit', action:'exit', title:'BAA債とAAA債の利回り差', rule:'Moody\'s Baa − Aaa の利回り差が3.0ポイント以上 → 撤退',
+      status:hit?'hit':'ok', tag:hit?'撤退':'未発動',
+      detail:`差 ${mcFmt(spread)}ポイント（Baa ${mcFmt(mc.credit.baa)}% [${mc.credit.baaDate}] − Aaa ${mcFmt(mc.credit.aaa)}% [${mc.credit.aaaDate}]）`});
+  } else rules.push({id:'credit', action:'exit', title:'BAA債とAAA債の利回り差', rule:'Moody\'s Baa − Aaa の利回り差が3.0ポイント以上 → 撤退',
+      status:'unknown', tag:'不明', detail:'FREDから取得できていません（実行ログの WARN を確認してください）。'});
+
+  /* 4. 日経で陰線2本、1日1000円以上下げたら全撤退 */
+  if(rows.length>=2){
+    const a = rows[rows.length-2], b = rows[rows.length-1];
+    const useCandle = a.bearish!==null && b.bearish!==null;
+    const bear = r => useCandle ? r.bearish : r.chg<0;
+    const twoBear = bear(a) && bear(b);
+    const bigDrop = (a.chg <= -T.moveYen) || (b.chg <= -T.moveYen);
+    const hit = twoBear && bigDrop;
+    const fmtRow = r => `${r.date} ${useCandle?(r.bearish?'陰線':'陽線'):(r.chg<0?'下落':'上昇')} 前日比${r.chg>0?'+':''}${mcFmt(r.chg,0)}円`;
+    rules.push({id:'allexit', action:'allexit', title:'日経で陰線2本 かつ 1日1000円以上の下げ',
+      rule:'直近2営業日が連続で陰線、かつその2日のどちらかが前日比-1,000円以下 → 全撤退',
+      status:hit?'hit':'ok', tag:hit?'全撤退':'未発動',
+      detail:`${fmtRow(a)} ／ ${fmtRow(b)}` + (useCandle?'':'（始値が取れないため、陰線の代わりに「前日比マイナス」で判定）')});
+  } else rules.push({id:'allexit', action:'allexit', title:'日経で陰線2本 かつ 1日1000円以上の下げ', rule:'直近2営業日が連続で陰線、かつどちらかが-1,000円以下 → 全撤退',
+      status:'unknown', tag:'不明', detail:'日経225のデータが足りません。'});
+
+  /* 5. 暴落時の買い（PC ratio 1.0/1.2、VIX 40/60） */
+  const parts = [];
+  const mark = (name, v, t1, t2, nd) => {
+    if(v===null || v===undefined) { parts.push(`${name}：不明`); return null; }
+    parts.push(`${name} ${mcFmt(v,nd)}`);
+    return v>=t2 ? 2 : (v>=t1 ? 1 : 0);
+  };
+  const lv = [ mark('VIX', vix, T.vix1, T.vix2, 2), mark('PC ratio(米)', pcUSv, T.pcr1, T.pcr2, 2), mark('日経PC ratio', pcJPv, T.pcr1, T.pcr2, 2) ];
+  const known = lv.filter(x=>x!==null), top = known.length ? Math.max(...known) : null;
+  const unkNames = [vix===null?'VIX':null, pcUSv===null?'PC ratio(米)':null, pcJPv===null?'日経PC ratio':null].filter(Boolean);
+  let bStatus, bTag;
+  if(top===null){ bStatus='unknown'; bTag='不明'; }
+  else if(top===2){ bStatus='buy'; bTag='さらに1/3 買い条件'; }
+  else if(top===1){ bStatus='buy'; bTag='1/3 買い条件'; }
+  else { bStatus='ok'; bTag='未成立'; }
+  rules.push({id:'buy', action:'buy', title:'暴落時の買い（3分の1ずつ）',
+    rule:'PC ratio 1.0以上 または VIX 40以上 → 1/3 買い。PC ratio 1.2以上 または VIX 60以上 → さらに1/3 買い（3回目の条件は未指定）',
+    status:bStatus, tag:bTag,
+    detail: parts.join(' ／ ') + (unkNames.length && top!==null ? `（${unkNames.join('・')}は不明のため、確認できた範囲での判定）` : '')
+      + (top>=1 ? '　※「暴落の時」かどうかは自動判定できません。ご自身で確認してください。' : '')});
+
+  /* 6. eMAXIS Slim 日経平均：日経高値から-10%で毎日積立、-20%でスポット買い */
+  if(nk && nk.athClose){
+    const lev = dd => dd<=T.dd2 ? 2 : (dd<=T.dd1 ? 1 : 0);
+    const lc = lev(nk.athClose.ddPct), lh = nk.athHigh ? lev(nk.athHigh.ddPct) : null;
+    const names = ['', '毎日積立 開始', 'スポット買い'];
+    const dline = `終値ベースの最高値 ${mcFmt(nk.athClose.value,0)}円（${nk.athClose.date}）から ${mcFmt(nk.athClose.ddPct)}%`
+      + (nk.athHigh ? ` ／ 日中高値ベース ${mcFmt(nk.athHigh.value,0)}円（${nk.athHigh.date}）から ${mcFmt(nk.athHigh.ddPct)}%` : ' ／ 日中高値ベースは不明（高値データなし）');
+    let st, tag;
+    if(lh!==null && lh!==lc){ st='warn'; tag='定義で分かれる'; }
+    else if(lc===0){ st='ok'; tag='未成立'; }
+    else { st='buy'; tag=names[lc]; }
+    rules.push({id:'dd', action:'buy', title:'eMAXIS Slim 日経平均：日経高値からの下落',
+      rule:'日経平均の高値から-10% → 毎日積立を開始。-20% → スポット買い（投信の基準価額ではなく日経平均で判定）',
+      status:st, tag, detail: dline + `（取得期間：${nk.periodFrom}〜）`});
+  } else rules.push({id:'dd', action:'buy', title:'eMAXIS Slim 日経平均：日経高値からの下落', rule:'日経平均の高値から-10% → 毎日積立、-20% → スポット買い',
+      status:'unknown', tag:'不明', detail:'日経225のデータが取得できていません。'});
+
+  /* 7. 植田ショック水準（日経VI 40） */
+  if(niVi!==null){
+    const hit = niVi >= T.niVi;
+    rules.push({id:'ueda', action:'info', title:'日経VI 40（植田ショック水準）', rule:'日経VIが40以上なら植田ショック級の水準。この水準で取る行動は指定がないため、表示のみ',
+      status:hit?'warn':'info', tag:hit?'40以上':'40未満', detail:`日経VI ${mcFmt(niVi)}（${niViSrc}）`});
+  } else rules.push({id:'ueda', action:'info', title:'日経VI 40（植田ショック水準）', rule:'日経VIが40以上なら植田ショック級の水準（表示のみ）',
+      status:'unknown', tag:'不明', detail:'日経VIを自動取得できていません。手入力欄に入力してください。'});
+
+  /* 全体判定 */
+  const sev = {allexit:3, exit:2, reduce:1};
+  let maxSev = 0;
+  rules.forEach(r => { if((r.status==='hit'||r.status==='warn') && sev[r.action]) maxSev = Math.max(maxSev, sev[r.action]); });
+  const sellRules = rules.filter(r => sev[r.action]);
+  const unknownSell = sellRules.filter(r => r.status==='unknown').length;
+  const buys = rules.filter(r => r.action==='buy' && r.status==='buy').map(r => r.title.split('：')[0] + '：' + r.tag);
+  return {target, expectPrev, rules, warnings, maxSev, unknownSell, buys, niVi, niViSrc, vix, pcUSv, pcJPv, spread, edgeN};
+}
+/* ===MORNING_END=== */
+
+/* ---- 朝チェックの描画・手入力 ---- */
+const MC_KEY = 'morningInputs.v1';
+function mcLoadInputs(){ try{ return JSON.parse(localStorage.getItem(MC_KEY)||'{}') || {}; }catch(e){ return {}; } }
+function mcSaveInputs(x){ try{ localStorage.setItem(MC_KEY, JSON.stringify(x)); }catch(e){} }
+function mcTodayJst(){ return new Date(Date.now()+9*3600*1000).toISOString().slice(0,10); }
+
+function renderMorningInputs(){
+  const el = document.getElementById('mcInputs');
+  const inp = mcLoadInputs(), today = mcTodayJst();
+  const num = (key,label,step,hint) => {
+    const x = inp[key]; const v = x && x.v!==undefined && x.v!==null ? x.v : '';
+    return `<div class="row"><label for="mc_${key}">${label}</label>
+      <input type="number" step="${step}" id="mc_${key}" value="${mcEsc(v)}" data-key="${key}">
+      <button class="clr" data-clear="${key}">消す</button>
+      <span class="when" id="mcw_${key}">${x&&x.d?'入力日 '+x.d:'未入力'}</span>
+      <span class="when">${hint}</span></div>`;
+  };
+  const geo = inp.geo && inp.geo.v ? inp.geo.v : '';
+  el.innerHTML =
+    num('niVi','日経VI','0.01','日経VIの最新値。自動取得できた場合は手入力が優先されます') +
+    num('pcUS','PC ratio（米国）','0.01','CBOEの市場全体のPut/Call ratioなど。どの値を使うかはご自身で決めてください') +
+    num('pcJP','日経PC ratio','0.01','日経225オプションのPut/Call ratio。公式の公表値は不明です') +
+    `<div class="row"><label for="mc_geo">地政学リスク</label>
+      <select id="mc_geo" data-key="geo"><option value="">未入力</option><option value="yes"${geo==='yes'?' selected':''}>あり</option><option value="no"${geo==='no'?' selected':''}>なし</option></select>
+      <span class="when" id="mcw_geo">${inp.geo&&inp.geo.d?'入力日 '+inp.geo.d:'未入力'}</span></div>` +
+    `<div class="row"><label for="mc_edge">月末月初の範囲</label>
+      <select id="mc_edge" data-key="edge">${[1,2,3].map(n=>`<option value="${n}"${(parseInt(inp.edge||1,10)===n)?' selected':''}>前後${n}営業日</option>`).join('')}</select>
+      <span class="when">月の最初／最後の何営業日を「月末月初」とみなすか（指定が無かったので初期値は1営業日）</span></div>` +
+    `<div class="when" style="margin-top:6px;">入力から${MC.STALE_DAYS}日を過ぎた値は判定に使いません。入力はこの端末のこのブラウザにだけ保存され、他の端末には反映されません。</div>`;
+  el.querySelectorAll('input[data-key],select[data-key]').forEach(c=>{
+    c.addEventListener('change', ()=>{
+      const k = c.getAttribute('data-key'), cur = mcLoadInputs(), t = mcTodayJst();
+      if(k==='edge') cur.edge = parseInt(c.value,10);
+      else if(c.value==='') delete cur[k];
+      else cur[k] = {v: (k==='geo'? c.value : Number(c.value)), d:t};
+      mcSaveInputs(cur);
+      const w = document.getElementById('mcw_'+k); if(w) w.textContent = cur[k] ? '入力日 '+t : (k==='edge'?'':'未入力');
+      renderMorningResults();
+    });
+  });
+  el.querySelectorAll('button[data-clear]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const k = b.getAttribute('data-clear'), cur = mcLoadInputs(); delete cur[k]; mcSaveInputs(cur);
+      const i = document.getElementById('mc_'+k); if(i) i.value='';
+      const w = document.getElementById('mcw_'+k); if(w) w.textContent='未入力';
+      renderMorningResults();
+    });
+  });
+}
+
+function renderMorningResults(){
+  const mc = DASHBOARD_DATA.morningCheck;
+  const today = mcTodayJst();
+  const R = evaluateMorning(mc, mcLoadInputs(), today);
+
+  /* バナー */
+  const b = document.getElementById('mcBanner');
+  let cls='sev-none', title='', sub=[];
+  if(R.maxSev===3){ cls='sev-allexit'; title='🚨 全撤退の条件に該当しています'; }
+  else if(R.maxSev===2){ cls='sev-exit'; title='🚨 撤退の条件に該当しています'; }
+  else if(R.maxSev===1){ cls='sev-reduce'; title='⚠️ ポジション縮小を検討する条件に該当しています'; }
+  else if(R.unknownSell>0){ cls='sev-unknown'; title=`発動した条件はありません（ただし ${R.unknownSell} 項目が不明）`; }
+  else { cls='sev-none'; title='撤退・縮小の条件は発動していません'; }
+  const hits = R.rules.filter(r=>(r.status==='hit'||r.status==='warn') && ['allexit','exit','reduce'].includes(r.action)).map(r=>`${r.title}（${r.tag}）`);
+  if(hits.length) sub.push('該当：'+hits.join('、'));
+  if(R.buys.length) sub.push('買い側：'+R.buys.join('、'));
+  sub.push(`判定の対象日：${R.target}（日本の営業日）／ データ取得：${DASHBOARD_DATA.fetchedAt}`);
+  R.warnings.forEach(w=>sub.push('注意：'+w));
+  b.className = 'mc-banner '+cls;
+  b.innerHTML = `<div class="mc-b-title">${mcEsc(title)}</div><div class="mc-b-sub">${sub.map(mcEsc).join('<br>')}</div>`;
+
+  /* 数字グリッド */
+  const cell = (name, val, sub, unk) => `<div class="mc-cell${unk?' unk':''}"><div class="name">${mcEsc(name)}</div><div class="val">${unk?'不明':mcEsc(val)}</div><div class="sub">${mcEsc(sub)}</div></div>`;
+  const tr = mc && mc.treasury, cr = mc && mc.credit;
+  const cells = [
+    R.niVi!==null ? cell('日経VI', mcFmt(R.niVi), R.niViSrc, false) : cell('日経VI','','自動取得できず。手入力欄へ',true),
+    R.vix!==null ? cell('VIX', mcFmt(R.vix), `${mc.vix.source}${mc.vix.pct!==null&&mc.vix.pct!==undefined?'　前日比 '+(mc.vix.pct>0?'+':'')+mcFmt(mc.vix.pct)+'%':''}`, false) : cell('VIX','','取得できず',true),
+    R.pcUSv!==null ? cell('PC ratio（米国）', mcFmt(R.pcUSv), '手入力', false) : cell('PC ratio（米国）','','手入力欄へ（自動取得元は未確認）',true),
+    R.pcJPv!==null ? cell('日経PC ratio', mcFmt(R.pcJPv), '手入力', false) : cell('日経PC ratio','','手入力欄へ（自動取得元は未確認）',true),
+    tr && tr.y10!==null && tr.y10!==undefined ? cell('米10年債利回り', mcFmt(tr.y10)+'%', `${tr.source}（${tr.date}）`, false) : cell('米10年債利回り','','取得できず',true),
+    tr && tr.y2!==null && tr.y2!==undefined ? cell('米2年債利回り', mcFmt(tr.y2)+'%', `10年−2年 ${tr.slope!==null?mcFmt(tr.slope)+'ポイント':'不明'}`, false) : cell('米2年債利回り','','取得できず',true),
+    cr ? cell('Baa − Aaa 利回り差', mcFmt(cr.spread)+'ポイント', cr.source+`（${cr.baaDate}）`, false) : cell('Baa − Aaa 利回り差','','FREDから取得できず',true),
+    cell('日本10年国債利回り','','自動取得元が未確認',true),
+  ];
+  document.getElementById('mcGrid').innerHTML = cells.join('');
+
+  /* ルール */
+  document.getElementById('mcRules').innerHTML = R.rules.map(r=>`
+    <div class="mc-rule st-${r.status}">
+      <div class="head"><div class="ttl">${mcEsc(r.title)}</div><div class="tag">${mcEsc(r.tag)}</div></div>
+      <div class="rule">${mcEsc(r.rule)}</div>
+      <div class="detail">${mcEsc(r.detail)}</div>
+    </div>`).join('');
+
+  /* 日経テーブル */
+  const nk = mc && mc.nikkei, tEl = document.getElementById('mcNikkeiTable');
+  if(nk && nk.recent && nk.recent.length){
+    const f0 = v => v===null||v===undefined ? '不明' : mcFmt(v,0);
+    tEl.innerHTML = `<table class="mc-table"><thead><tr><th>日付</th><th>始値</th><th>高値</th><th>安値</th><th>終値</th><th>前日比</th><th>足</th></tr></thead><tbody>`
+      + nk.recent.slice().reverse().map(r=>`<tr><td>${r.date}</td><td>${f0(r.o)}</td><td>${f0(r.h)}</td><td>${f0(r.l)}</td><td>${f0(r.c)}</td>
+        <td class="${r.chg>0?'up':(r.chg<0?'down':'flat')}">${r.chg>0?'+':''}${mcFmt(r.chg,0)}</td><td>${r.bearish===null?'不明':(r.bearish?'陰線':'陽線')}</td></tr>`).join('')
+      + `</tbody></table><div class="sentiment-note" style="margin-top:-6px;margin-bottom:14px;">出典：${mcEsc(nk.source)}（取得期間 ${nk.periodFrom}〜${nk.periodTo}）</div>`;
+  } else tEl.innerHTML = `<div class="empty-state">日経225のデータを取得できていません</div>`;
+
+  /* 前提・定義 */
+  document.getElementById('mcNotes').innerHTML = `
+    <b>データの出典</b>
+    <ul>
+      <li>日経225の日足：yfinance（Yahoo! Finance）の ^N225。取得できない時はFMPの終値のみ（その場合、陰線・日中高値は不明）</li>
+      <li>VIX・米国債利回り：FMP（Financial Modeling Prep）</li>
+      <li>Baa − Aaa：FRED（セントルイス連銀）の DBAA と DAAA（Moody's の長期社債利回り、日次）</li>
+      <li>日経VI：yfinanceで自動取得を試みますが、これまで取得できた実績がありません。取れない時は不明と表示し、手入力を使います</li>
+      <li>PC ratio（米国・日経）・地政学リスク：自動で取れる情報源を確認できていないため、手入力のみです</li>
+      <li>日本の祝日：Pythonの jpholiday（東証の年末年始休場を追加）</li>
+    </ul>
+    <b style="display:block;margin-top:10px;">定義が複数あり、このページで選んだもの</b>
+    <ul>
+      <li><b>「日経が1日1000円以上動く」</b>：前日終値比（終値ベース）を使用。日中値幅（高値−安値）で見る定義もあり、値幅は参考として併記しています</li>
+      <li><b>「陰線」</b>：始値より終値が低い日（ローソク足）を使用。「前日比マイナス」を陰線と呼ぶ定義もあり、始値が取れない時だけそちらに切り替えて明記します</li>
+      <li><b>「陰線2本、1日1000円以上下げたら全撤退」</b>：直近2営業日が連続陰線で、その2日のどちらかが-1,000円以下、と読みました。「2日とも-1,000円以下」「2日目だけ」とも読めますが、どれかは指定から確定できません</li>
+      <li><b>「日経高値」</b>：取得できた全期間の最高値を、終値ベースと日中高値ベースの2通りで表示。2つで結論が分かれる時は「定義で分かれる」と出します。投信（eMAXIS Slim 日経平均）の基準価額そのものは取得していないため、日経平均で代用しています</li>
+      <li><b>「MSQ」</b>：メジャーSQ（3・6・9・12月の第2金曜日）としました。毎月のSQ（オプションSQ）まで含める読み方もあります</li>
+      <li><b>「月末月初」</b>：範囲の指定が無かったため、初期値は月の最初と最後の各1営業日。上の手入力欄で1〜3営業日に変えられます</li>
+      <li><b>「BAA債とAAA債」</b>：Moody'sの長期社債利回り（FRED）を使用。ICE BofAの社債スプレッド（OAS）など、別の指標もあります。差は「利回りの差（ポイント）」で、3%は3.0ポイントとして扱っています</li>
+      <li><b>「PC ratio」</b>：米国か日経かの指定が無いため、どちらの値も判定に使います（高い方の水準で判定）。算出方法（売買高ベースか建玉ベースか）も複数あるため、入力値の定義はご自身でそろえてください</li>
+      <li><b>「暴落の時は3分の1ずつ買う」</b>：数値条件（PC ratio・VIX）が成立した時に「買い条件」と表示するだけで、暴落かどうかの自動判定はしません。3回目の買いの条件は指定が無いため表示していません</li>
+      <li><b>「植田ショックは日経VI 40」</b>：日経VI 40以上を目印として表示するだけです。この水準で何をするかは指定が無いので、行動の判定には使っていません</li>
+    </ul>
+    <b style="display:block;margin-top:10px;">そのほか</b>
+    <ul>
+      <li>このページは毎朝5:40（日本時間）に更新されます。土曜朝は金曜の米国市場までのデータで、日本の営業日は月曜として判定します</li>
+      <li>「不明」は「条件に当てはまらない」ではなく「確認できていない」という意味です。不明が残っている間は、発動なしとは言い切れません</li>
+      <li>投資判断はご自身で行ってください。これは設定されたルールに数字を当てはめる表示で、売買の推奨ではありません</li>
+    </ul>`;
+}
+function renderMorning(){ renderMorningInputs(); renderMorningResults(); }
+
+renderMorning();
 </script>
 </body>
 </html>
