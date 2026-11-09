@@ -952,5 +952,23 @@
   "spot_close": 61077.9,
   "sigma_abs": 3209.0,
   "cross_check": -514.0
+ },
+ {
+  "date": "2026-11-06",
+  "forward": 57318.0,
+  "atm_iv": 51.06,
+  "rr25": 11.05,
+  "bf25": 2.21,
+  "put25_iv": 58.8,
+  "call25_iv": 47.75,
+  "gex_at_atm": -1060.2,
+  "gex_flip": null,
+  "gex_regime": "ショートガンマ",
+  "put_effective_delta": 41533.0,
+  "max_pain": 65000.0,
+  "nikkei_vi": null,
+  "spot_close": 57434.77,
+  "sigma_abs": 4053.0,
+  "cross_check": 1788.0
  }
 ]
